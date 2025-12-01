@@ -80,49 +80,38 @@ const clock = new THREE.Clock();
 
 
 // ASSET: CITY (SCENE 4 + FINAL)
-// const city_loader = new GLTFLoader().setPath( 'City/' );
-//     city_loader.load( 'scene.gltf', function ( gltf ) {
+const city_loader = new GLTFLoader().setPath( 'City/' );
+    city_loader.load( 'scene.gltf', function ( gltf ) {
 
-//         const city = gltf.scene
+        const city = gltf.scene
 
-//         city.traverse((node) => {
-//             if (node.isMesh) {
-//                 const oldMat = node.material;
+        city.traverse((node) => {
+            if (node.isMesh) {
+                const oldMat = node.material;
                 
-//                 // Replace MeshBasicMaterial with light-reactive material
-//                 if (oldMat && oldMat.type === 'MeshBasicMaterial') {
-//                     const newMat = new THREE.MeshStandardMaterial({
-//                         map: oldMat.map || null,
-//                         normalMap: oldMat.normalMap || null,
-//                         roughness: 0.8,
-//                         metalness: 0.1,
-//                         emissiveMap: oldMat.emissiveMap || null,
-//                         emissive: oldMat.emissive || new THREE.Color(0x000000),
-//                     });
-//                     newMat.needsUpdate = true;
-//                     node.material = newMat;
-//                 }
+                // Replace MeshBasicMaterial with light-reactive material
+                if (oldMat && oldMat.type === 'MeshBasicMaterial') {
+                    const newMat = new THREE.MeshStandardMaterial({
+                        map: oldMat.map || null,
+                        normalMap: oldMat.normalMap || null,
+                        roughness: 0.8,
+                        metalness: 0.1,
+                        emissiveMap: oldMat.emissiveMap || null,
+                        emissive: oldMat.emissive || new THREE.Color(0x000000),
+                    });
+                    newMat.needsUpdate = true;
+                    node.material = newMat;
+                }
 
-//                 node.castShadow = true;
-//                 node.receiveShadow = true;
-//             }
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
 
-//             if (node.isLight) node.parent.remove(node);
-//         });
+            if (node.isLight) node.parent.remove(node);
+        });
 
-//         // scene.add( city );
-//         // city.scale.set(10,10,10); //X Y Z
-//         // animate();
-
-//     });
-
-    const subway_loader = new GLTFLoader().setPath( 'Subway/' );
-    subway_loader.load( 'scene.gltf', function ( gltf ) {
-
-        const subway = gltf.scene
-
-        scene.add( subway );
-        subway.scale.set(10,10,10); //X Y Z
+        scene.add( city );
+        city.scale.set(10,10,10); //X Y Z
         animate();
 
     });

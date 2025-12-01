@@ -114,7 +114,7 @@ const classroom_loader = new GLTFLoader().setPath( 'Classroom/' );
 
     });
 
-const urotsuki_loader = new GLTFLoader().setPath( 'asset2/' );
+const urotsuki_loader = new GLTFLoader().setPath( 'Urotsuki/' );
     urotsuki_loader.load( 'scene.gltf', function ( gltf ) {
 
         const model = gltf.scene;
