@@ -1,4 +1,5 @@
 import * as THREE from "three"
+import Stats from 'stats.js';
 
 //orbit control
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -145,22 +146,77 @@ const urotsuki_loader = new GLTFLoader().setPath( 'Urotsuki/' );
         // --- Animation setup ---
         mixer = new THREE.AnimationMixer(model);
 
-        // Play the first animation, or find one by name
+        // --- Animation system with timeline ---
         const clips = gltf.animations;
 
-        // Find the one named "sit" (case-insensitive)
-        const sitClip = THREE.AnimationClip.findByName(clips, 'Sitting');
-
-        if (sitClip) {
-            const action = mixer.clipAction(sitClip);
-            action.play(); // start playing the animation
-        } else {
-            console.warn('Sit animation not found — available clips:', clips.map(c => c.name));
+        // Utility: get animation by name (case-insensitive)
+        function getClip(name) {
+            return THREE.AnimationClip.findByName(clips, name) || null;
         }
+
+        // Store actions
+        const actions = {
+            idle: mixer.clipAction(getClip('Idle')),
+            walk: mixer.clipAction(getClip('Walking')),
+            sit:  mixer.clipAction(getClip('Sitting')),
+        };
+
+        // Enable smooth crossfade
+        function playAction(actionName, fade = 0.5) {
+            if (!actions[actionName]) {
+                console.warn(`Animation "${actionName}" not found`);
+                return;
+            }
+
+            const next = actions[actionName];
+
+            if (mixer.currentAction !== next) {
+                if (mixer.currentAction) {
+                    mixer.currentAction.fadeOut(fade);
+                }
+                next.reset().fadeIn(fade).play();
+                mixer.currentAction = next;
+            }
+        }
+
+        // Timeline (in seconds)
+        const animationTimeline = [
+            { time: 0, action: "idle" },     // 0s–5s idle
+            { time: 5, action: "walk" },     // 5s–10s walk
+            { time: 10, action: "sit" },     // 10s → sit forever
+        ];
+
+        // Track time
+        let timelineClock = 0;
+        let nextIndex = 0;
+        playAction(animationTimeline[0].action); // initial state
+
+
+        // Play the first animation, or find one by name
+        // const clips = gltf.animations;
+
+        // // Find the one named "sit" (case-insensitive)
+        // const sitClip = THREE.AnimationClip.findByName(clips, 'Sitting');
+
+        // if (sitClip) {
+        //     const action = mixer.clipAction(sitClip);
+        //     action.play(); // start playing the animation
+        // } else {
+        //     console.warn('Sit animation not found — available clips:', clips.map(c => c.name));
+        // }
 
         animate();
 
     } );
+
+/// FPS Monitoring
+const stats = new Stats();
+
+// 2. Choose which panel to display (0: FPS, 1: Milliseconds, 2: Memory)
+stats.showPanel(0); 
+
+// 3. Add the monitor to your HTML document
+document.body.appendChild(stats.dom);
 
 // let mesh = new THREE.Mesh(geometry, material);
 // mesh.rotation.x = -Math.PI / 2;
@@ -189,8 +245,21 @@ const urotsuki_loader = new GLTFLoader().setPath( 'Urotsuki/' );
 
 function animate() {
     const delta = clock.getDelta();
-    if (mixer) mixer.update(delta);
-    renderer.render(scene, camera)
+    if (mixer) {
+        mixer.update(delta);
+
+        // timeline logic
+        timelineClock += delta;
+        if (nextIndex < animationTimeline.length &&
+            timelineClock >= animationTimeline[nextIndex].time) 
+        {
+            playAction(animationTimeline[nextIndex].action);
+            nextIndex++;
+        }
+    }
+
+    renderer.render(scene, camera);
     requestAnimationFrame(animate);
 }
+
 requestAnimationFrame(animate);
