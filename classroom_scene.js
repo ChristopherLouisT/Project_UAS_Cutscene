@@ -4,8 +4,7 @@ import Stats from "./node_modules/stats.js/src/Stats.js"
 //orbit control
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 
 /* ================ */
 
@@ -40,7 +39,7 @@ scene.add(light);
 
 const sunLight = new THREE.DirectionalLight(0xffe9c0, 2.5);
 sunLight.position.set(150, 140, 80);
-sunLight.target.position.set(-90,-80,-15)
+sunLight.target.position.set(-90, -80, -15)
 sunLight.castShadow = true;
 sunLight.shadow.camera.near = 1;
 sunLight.shadow.camera.far = 1000;
@@ -48,302 +47,199 @@ sunLight.shadow.camera.left = -300;
 sunLight.shadow.camera.right = 300;
 sunLight.shadow.camera.top = 300;
 sunLight.shadow.camera.bottom = -300;
-sunLight.shadow.bias = -0.09; //Buat shadownya ga terlalu kuat
-scene.add(new THREE.CameraHelper(sunLight.shadow.camera)) 
+sunLight.shadow.bias = -0.09; 
+scene.add(new THREE.CameraHelper(sunLight.shadow.camera))
 scene.add(sunLight);
 scene.add(sunLight.target)
 var sunLightHelper = new THREE.DirectionalLightHelper(sunLight)
 scene.add(sunLightHelper)
 
-// Debug Shadow tool
-// const floor = new THREE.Mesh(
-//   new THREE.PlaneGeometry(500, 500),
-//   new THREE.MeshStandardMaterial({ color: 0x888888 })
-// );
-// floor.rotation.x = -Math.PI / 2;
-// floor.position.y = 0;
-// floor.receiveShadow = true;
-// scene.add(floor);
-
-// Spot Light
-// color = 0xFF0000;
-// intensity = 30000;
-// var angle = THREE.MathUtils.degToRad(35);
-// light = new THREE.SpotLight(color, intensity, distance, angle);
-// light.position.set(-50, 10, 0);
-// light.target.position.set(10, 10, 0);
-// light.castShadow = true;
-// scene.add(new THREE.CameraHelper(light.shadow.camera)) 
-// scene.add(light);
-// scene.add(light.target);
-
-// var spotLightHelper = new THREE.SpotLightHelper(light);
-// scene.add(spotLightHelper);
 
 let mixer; // to control animations
 const clock = new THREE.Clock();
 
-// Animation global variable
-let actions = {};
+const classroom_loader = new GLTFLoader().setPath('Classroom/');
+classroom_loader.load('scene.gltf', function (gltf) {
+
+    const classroom = gltf.scene
+
+    classroom.traverse((node) => {
+        if (node.isMesh) {
+            const oldMat = node.material;
+
+            // Replace MeshBasicMaterial with light-reactive material
+            if (oldMat && oldMat.type === 'MeshBasicMaterial') {
+                const newMat = new THREE.MeshStandardMaterial({
+                    map: oldMat.map || null,
+                    normalMap: oldMat.normalMap || null,
+                    roughness: 0.8,
+                    metalness: 0.1,
+                    emissiveMap: oldMat.emissiveMap || null,
+                    emissive: oldMat.emissive || new THREE.Color(0x000000),
+                });
+                newMat.needsUpdate = true;
+                node.material = newMat;
+            }
+
+            node.castShadow = true;
+            node.receiveShadow = true;
+        }
+
+        if (node.isLight) node.parent.remove(node);
+    });
+
+    scene.add(classroom);
+    classroom.scale.set(10, 10, 10); //X Y Z
+    animate();
+
+});
+
+/* =========================================
+   SETUP KARAKTER & NAVIGASI
+   ========================================= */
+
+let actions = {}, currentAction;
 let animationTimeline = [];
 let timelineClock = 0;
 let nextIndex = 0;
 
-let walkSpeed = 2;       // units per second (adjust as needed)
-let currentActionName = ""; 
+// --- VARIABEL BARU UNTUK PERGERAKAN ---
+let character = null; 
+const charSpeed = 12; 
+let waypointIndex = 0;
 
-let model;   // global character reference
+// Definisi 3 Titik Tujuan
+const waypoints = [
+    new THREE.Vector3(-10, -6, 20), // 1. Kanan
+    new THREE.Vector3(-10, -9, 120),  // 2. Maju
+    new THREE.Vector3(-150, -9, 135)   // 3. Kanan
+];
 
-const classroom_loader = new GLTFLoader().setPath( 'Classroom/' );
-    classroom_loader.load( 'scene.gltf', function ( gltf ) {
+const stats = new Stats();
+stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+document.body.appendChild(stats.dom);
 
-        const classroom = gltf.scene
+// Helper object untuk menghitung rotasi tanpa mengganggu mesh asli
+const dummyTarget = new THREE.Object3D(); 
+// --------------------------------------
 
-        classroom.traverse((node) => {
-            if (node.isMesh) {
-                const oldMat = node.material;
-                
-                // Replace MeshBasicMaterial with light-reactive material
-                if (oldMat && oldMat.type === 'MeshBasicMaterial') {
-                    const newMat = new THREE.MeshStandardMaterial({
-                        map: oldMat.map || null,
-                        normalMap: oldMat.normalMap || null,
-                        roughness: 0.8,
-                        metalness: 0.1,
-                        emissiveMap: oldMat.emissiveMap || null,
-                        emissive: oldMat.emissive || new THREE.Color(0x000000),
-                    });
-                    newMat.needsUpdate = true;
-                    node.material = newMat;
-                }
+const loader = new FBXLoader();
+loader.setPath("Jinhsi/");
 
-                node.castShadow = true;
-                node.receiveShadow = true;
-            }
+loader.load("Sitting.fbx", (fbx) => {
+    fbx.scale.setScalar(0.09);
+    fbx.position.set(10, -2, 20); // Posisi Awal
 
-            if (node.isLight) node.parent.remove(node);
-        });
+    //Removing light from character
+    fbx.traverse(obj => {
+        if (obj.isLight) obj.parent.remove(obj);
 
-        scene.add( classroom );
-        classroom.scale.set(10,10,10); //X Y Z
-        animate();
-
-    });
-
-/* --- GLOBAL animation functions --- */
-// Smooth action switching
-function playAction(actionName, fade = 0.5) {
-    if (!actions[actionName]) {
-        console.warn(`Animation "${actionName}" not found`);
-        return;
-    }
-
-    currentActionName = actionName;  
-
-    const next = actions[actionName];
-
-    if (mixer && mixer.currentAction !== next) {
-        if (mixer.currentAction) {
-            mixer.currentAction.fadeOut(fade);
-        }
-        next.reset().fadeIn(fade).play();
-        mixer.currentAction = next;
-    }
-}
-
-function loadAnim(name, file) {
-        jinhsi_loader.load(file, (animFBX) => {
-            const clip = animFBX.animations[0];
-            const action = mixer.clipAction(clip);
-            actions[name] = action;
-        });
-    }
-
-//For loading fbx animations
-function loadCharacterAnimations() {
-
-    const animLoader = new FBXLoader().setPath('Jinhsi/');
-
-    const animationFiles = [
-        { file: "Left Turn 90.fbx",  name: "Left_Turn_90" },
-        { file: "Right Turn.fbx",  name: "Right_Turn" },
-        { file: "Sit to Stand.fbx",   name: "Sit_to_stand"  },
-        { file: "Sitting.fbx",  name: "Sitting" },
-        { file: "Walking.fbx",  name: "Walking" },
-        { file: "Walk Left Turn.fbx",   name: "Walk_to_left"  },
-        { file: "Walk Right Turn.fbx",   name: "Walk_to_right"  }
-    ];
-
-    let loadedCount = 0;
-
-    animationFiles.forEach(anim => {
-
-        animLoader.load(anim.file, function (fbxAnim) {
-
-            const clip = fbxAnim.animations[0];
-            clip.name = anim.name;   // rename for easy reference
-
-            actions[anim.name] = mixer.clipAction(clip);
-
-            loadedCount++;
-
-            // Start animation system when all animations are ready
-            if (loadedCount === animationFiles.length) {
-                startAnimationTimeline();
-            }
-        });
-    });
-}
-
-function startAnimationTimeline() {
-    animationTimeline = [
-        { time: 0, action: "Sitting" },
-        { time: 5, action: "Sit_to_stand" },
-        { time: 10, action: "Walking" },
-    ];
-
-    timelineClock = 0;
-    nextIndex = 0;
-
-    playAction(animationTimeline[0].action);
-    animate();
-}
-
-function setupTimeline() {
-    animationTimeline = [
-        { time: 0, action: "Sitting" },
-        { time: 4, action: "Sit_to_stand" },
-        { time: 8, action: "Walking" },
-    ];
-
-    timelineClock = 0;
-    nextIndex = 0;
-
-    playAction(animationTimeline[0].action);
-}
-
-// const urotsuki_loader = new GLTFLoader().setPath( 'Urotsuki/' );
-//     urotsuki_loader.load( 'scene.gltf', function ( gltf ) {
-
-//         model = gltf.scene;
-
-//         model.traverse((node) => {
-//             if (node.isMesh || node.isSkinnedMesh) {
-//                 node.castShadow = true;
-//                 node.receiveShadow = true;
-
-//                 // Convert MeshBasicMaterial to a shadow-supporting one
-//                 if (node.material && node.material.type === 'MeshBasicMaterial') {
-//                 const oldMat = node.material;
-//                 node.material = new THREE.MeshStandardMaterial({
-//                     map: oldMat.map || null,
-//                     skinning: !!node.isSkinnedMesh,
-//                     roughness: 0.6,
-//                     metalness: 0.1,
-//                 });
-//                 node.material.needsUpdate = true;
-//                 }
-//             }
-//         });
-
-//         scene.add( model );
-//         model.scale.set(30,30,30); //X Y Z
-//         model.position.set(10,5,20) //X Y Z
-
-//         // --- Animation setup ---
-//         mixer = new THREE.AnimationMixer(model);
-
-//         // --- Animation system with timeline ---
-//         const clips = gltf.animations;
-
-//         // Utility: get animation by name (case-insensitive)
-//         function getClip(name) {
-//             return THREE.AnimationClip.findByName(clips, name) || null;
-//         }
-
-//         // Store actions
-//         actions = {
-//             idle: mixer.clipAction(getClip('Idle')),
-//             walk: mixer.clipAction(getClip('Walking')),
-//             sit:  mixer.clipAction(getClip('Sitting')),
-//         };
-
-//         // Timeline (in seconds)
-//         animationTimeline = [
-//             { time: 0, action: "idle" },     // 0s–5s idle
-//             { time: 5, action: "walk" },     // 5s–10s walk
-//             { time: 10, action: "sit" },     // 10s → sit forever
-//         ];
-
-//         // Track time
-//         timelineClock = 0;
-//         nextIndex = 0;
-//         playAction(animationTimeline[0].action); // initial state
-
-//         animate();
-
-//     } );
-
-const jinhsi_loader = new FBXLoader().setPath("Jinhsi/");
-
-jinhsi_loader.load("Sitting.fbx", function (fbx) {
-
-    model = fbx;
-    model.scale.set(0.09, 0.09, 0.09);
-    model.position.set(10, 5, 20);
-    scene.add(model);
-
-    // Enable shadows
-    model.traverse((node) => {
-        if (node.isMesh || node.isSkinnedMesh) {
-            node.castShadow = true;
-            node.receiveShadow = true;
+        if (obj.isMesh && obj.material) {
+            obj.material.emissive = new THREE.Color(0x000000);
+            obj.material.emissiveIntensity = 0;
+            obj.castShadow = true;
+            obj.receiveShadow = true;
         }
     });
 
-    // Initialize animation mixer
-    mixer = new THREE.AnimationMixer(model);
 
-    // After model is loaded → load animations
-    // loadCharacterAnimations();
+    scene.add(fbx);
 
+    character = fbx; 
+
+    mixer = new THREE.AnimationMixer(fbx);
+
+    const sit = mixer.clipAction(fbx.animations[0]);
+    actions["sit"] = sit;
+    currentAction = sit;
+    sit.play();
+
+    // Load animations 
     loadAnim("standup", "Sit to Stand.fbx");
     loadAnim("walk", "Walking.fbx");
 
     setupTimeline();
 });
 
+function loadAnim(name, file) {
+    loader.load(file, (animFBX) => {
+        let clip = animFBX.animations[0];
+        const action = mixer.clipAction(clip);
+        actions[name] = action;
+    });
+}
 
+function playAction(name, fade = 0.5) { // Fade agak diperlambat biar smooth
+    const nextAction = actions[name];
+    if (!nextAction) {
+        console.warn(`Animation "${name}" not loaded yet`);
+        return;
+    }
 
-/// FPS Monitoring
-const stats = new Stats();
-stats.showPanel(0); 
-document.body.appendChild(stats.dom);
+    if (currentAction !== nextAction) {
+        if (currentAction) {
+            currentAction.fadeOut(fade);
+        }
+        nextAction.reset().fadeIn(fade).play();
+        currentAction = nextAction;
+    }
+}
 
-// let mesh = new THREE.Mesh(geometry, material);
-// mesh.rotation.x = -Math.PI / 2;
-// mesh.receiveShadow = true;
-// scene.add(mesh);
+function setupTimeline() {
+    animationTimeline = [
+        { time: 0, action: "sit" },
+        { time: 3, action: "standup" }, // Durasi standup biasanya 2-3 detik
+        { time: 5, action: "walk" },  // Kasih jeda sedikit biar rotasi selesai sempurna
+    ];
 
+    timelineClock = 0;
+    nextIndex = 0;
 
-// let radius = 7;
-// let widthSegments = 12;
-// let heightSegments = 8;
-// geometry = new THREE.SphereGeometry(radius, widthSegments, heightSegments);
-// material = new THREE.MeshPhongMaterial({ color: '#FA8' });
-// mesh = new THREE.Mesh(geometry, material);
-// mesh.position.set(-radius - 1, radius + 2, 0);
-// mesh.castShadow = true;
-// scene.add(mesh);
+    playAction(animationTimeline[0].action);
+}
 
+// --- FUNGSI UPDATE GERAK & ROTASI KARAKTER ---
+function updateCharacterMove(delta) {
+    if (!character) return;
 
-// size = 4;
-// geometry = new THREE.BoxGeometry(size, size, size);
-// material = new THREE.MeshPhongMaterial({ color: '#8AC', transparent: true, opacity: 0.5 });
-// mesh = new THREE.Mesh(geometry, material);
-// mesh.position.set(size + 1, size / 2, 0);
-// mesh.castShadow = true;
-// scene.add(mesh);
+    // 1. LOGIKA SAAT STAND UP (Putar badan ke arah tujuan pertama)
+    //    Ini membuat karakter berputar ditempat saat berdiri agar siap berjalan
+    if (actions["standup"] && currentAction === actions["standup"]) {
+        const target = waypoints[0];
+        
+        // Gunakan dummy object untuk mencontek rotasi yang seharusnya
+        dummyTarget.position.copy(character.position);
+        dummyTarget.lookAt(target); 
+        
+        // Putar karakter secara halus (Slerp) menuju rotasi dummy
+        // Angka 3.0 adalah kecepatan putar (semakin besar semakin cepat)
+        character.quaternion.slerp(dummyTarget.quaternion, 3.0 * delta);
+    }
+
+    // 2. LOGIKA SAAT WALK (Jalan + Putar mengikuti jalur)
+    if (actions["walk"] && currentAction === actions["walk"]) {
+        if (waypointIndex < waypoints.length) {
+            const target = waypoints[waypointIndex];
+            const distance = character.position.distanceTo(target);
+
+            // Jika jarak sudah dekat (< 0.5), pindah ke tujuan berikutnya
+            if (distance < 0.5) {
+                waypointIndex++;
+            } else {
+                // Hitung arah
+                const direction = new THREE.Vector3().subVectors(target, character.position).normalize();
+                
+                // Pindahkan posisi
+                character.position.add(direction.multiplyScalar(charSpeed * delta));
+                
+                // Rotasi badan menghadap tujuan (Smooth turn saat jalan)
+                dummyTarget.position.copy(character.position);
+                dummyTarget.lookAt(target);
+                character.quaternion.slerp(dummyTarget.quaternion, 10.0 * delta); // Rotasi cepat saat jalan
+            }
+        } 
+    }
+}
 
 // =======================
 // CAMERA MOVEMENT SYSTEM
@@ -356,7 +252,7 @@ const movement = {
     right: false,
 };
 
-const moveSpeed = 1;      // camera move speed
+const moveSpeed = 0.2;      // camera move speed
 
 window.addEventListener("keydown", (e) => {
     switch (e.code) {
@@ -398,42 +294,36 @@ function updateCameraMovement() {
         direction.cross(camera.up).normalize();
         camera.position.addScaledVector(direction, moveSpeed);
     }
+
+    const front = new THREE.Vector3();
+    camera.getWorldDirection(front);
+    controls.target.copy(camera.position).add(front.multiplyScalar(10));
+    controls.update();
 }
 
 function animate() {
     stats.begin();
     const delta = clock.getDelta();
-
+    
     if (mixer) {
         mixer.update(delta);
 
-        // Timeline logic...
         timelineClock += delta;
         if (nextIndex < animationTimeline.length &&
             timelineClock >= animationTimeline[nextIndex].time) {
+
             playAction(animationTimeline[nextIndex].action);
             nextIndex++;
         }
     }
 
-    // ---- Character Movement While Walking ----
-    if (currentActionName === "walk" && model) {
-        const forward = new THREE.Vector3(0, 0, 1);
-        forward.applyQuaternion(model.quaternion);
-        model.position.addScaledVector(forward, walkSpeed * delta);
-    }
+    // Update logika pergerakan karakter
+    updateCharacterMove(delta);
 
-    // ---- CAMERA FOLLOW ----
-    if (model) {
-        const offset = cameraOffset.clone();
-        offset.applyQuaternion(model.quaternion);
-        const desiredPos = model.position.clone().add(offset);
+    // Update kamera user
+    updateCameraMovement();
 
-        camera.position.lerp(desiredPos, cameraLerpSpeed);
-        camera.lookAt(model.position);
-    }
-
-    renderer.render(scene, camera);
+    renderer.render(scene, camera)
     stats.end();
     requestAnimationFrame(animate);
 }
