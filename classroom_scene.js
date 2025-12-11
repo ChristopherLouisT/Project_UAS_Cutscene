@@ -1,9 +1,11 @@
 import * as THREE from "three"
-import Stats from 'stats.js';
+import Stats from "./node_modules/stats.js/src/Stats.js"
 
 //orbit control
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
 
 /* ================ */
 
@@ -19,7 +21,9 @@ const scene = new THREE.Scene();
 
 //setup camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 0, 50);
+let cameraOffset = new THREE.Vector3(10, 25, 60); 
+let cameraLerpSpeed = 0.1;
+camera.position.set(10, 25, 60);
 camera.lookAt(0, 0, 0);
 
 //setup orbit control
@@ -79,6 +83,17 @@ scene.add(sunLightHelper)
 let mixer; // to control animations
 const clock = new THREE.Clock();
 
+// Animation global variable
+let actions = {};
+let animationTimeline = [];
+let timelineClock = 0;
+let nextIndex = 0;
+
+let walkSpeed = 2;       // units per second (adjust as needed)
+let currentActionName = ""; 
+
+let model;   // global character reference
+
 const classroom_loader = new GLTFLoader().setPath( 'Classroom/' );
     classroom_loader.load( 'scene.gltf', function ( gltf ) {
 
@@ -115,107 +130,194 @@ const classroom_loader = new GLTFLoader().setPath( 'Classroom/' );
 
     });
 
-const urotsuki_loader = new GLTFLoader().setPath( 'Urotsuki/' );
-    urotsuki_loader.load( 'scene.gltf', function ( gltf ) {
+/* --- GLOBAL animation functions --- */
+// Smooth action switching
+function playAction(actionName, fade = 0.5) {
+    if (!actions[actionName]) {
+        console.warn(`Animation "${actionName}" not found`);
+        return;
+    }
 
-        const model = gltf.scene;
+    currentActionName = actionName;  
 
-        model.traverse((node) => {
-            if (node.isMesh || node.isSkinnedMesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
+    const next = actions[actionName];
 
-                // Convert MeshBasicMaterial to a shadow-supporting one
-                if (node.material && node.material.type === 'MeshBasicMaterial') {
-                const oldMat = node.material;
-                node.material = new THREE.MeshStandardMaterial({
-                    map: oldMat.map || null,
-                    skinning: !!node.isSkinnedMesh,
-                    roughness: 0.6,
-                    metalness: 0.1,
-                });
-                node.material.needsUpdate = true;
-                }
+    if (mixer && mixer.currentAction !== next) {
+        if (mixer.currentAction) {
+            mixer.currentAction.fadeOut(fade);
+        }
+        next.reset().fadeIn(fade).play();
+        mixer.currentAction = next;
+    }
+}
+
+function loadAnim(name, file) {
+        jinhsi_loader.load(file, (animFBX) => {
+            const clip = animFBX.animations[0];
+            const action = mixer.clipAction(clip);
+            actions[name] = action;
+        });
+    }
+
+//For loading fbx animations
+function loadCharacterAnimations() {
+
+    const animLoader = new FBXLoader().setPath('Jinhsi/');
+
+    const animationFiles = [
+        { file: "Left Turn 90.fbx",  name: "Left_Turn_90" },
+        { file: "Right Turn.fbx",  name: "Right_Turn" },
+        { file: "Sit to Stand.fbx",   name: "Sit_to_stand"  },
+        { file: "Sitting.fbx",  name: "Sitting" },
+        { file: "Walking.fbx",  name: "Walking" },
+        { file: "Walk Left Turn.fbx",   name: "Walk_to_left"  },
+        { file: "Walk Right Turn.fbx",   name: "Walk_to_right"  }
+    ];
+
+    let loadedCount = 0;
+
+    animationFiles.forEach(anim => {
+
+        animLoader.load(anim.file, function (fbxAnim) {
+
+            const clip = fbxAnim.animations[0];
+            clip.name = anim.name;   // rename for easy reference
+
+            actions[anim.name] = mixer.clipAction(clip);
+
+            loadedCount++;
+
+            // Start animation system when all animations are ready
+            if (loadedCount === animationFiles.length) {
+                startAnimationTimeline();
             }
         });
+    });
+}
 
-        scene.add( model );
-        model.scale.set(30,30,30); //X Y Z
-        model.position.set(10,5,20) //X Y Z
+function startAnimationTimeline() {
+    animationTimeline = [
+        { time: 0, action: "Sitting" },
+        { time: 5, action: "Sit_to_stand" },
+        { time: 10, action: "Walking" },
+    ];
 
-        // --- Animation setup ---
-        mixer = new THREE.AnimationMixer(model);
+    timelineClock = 0;
+    nextIndex = 0;
 
-        // --- Animation system with timeline ---
-        const clips = gltf.animations;
+    playAction(animationTimeline[0].action);
+    animate();
+}
 
-        // Utility: get animation by name (case-insensitive)
-        function getClip(name) {
-            return THREE.AnimationClip.findByName(clips, name) || null;
+function setupTimeline() {
+    animationTimeline = [
+        { time: 0, action: "Sitting" },
+        { time: 4, action: "Sit_to_stand" },
+        { time: 8, action: "Walking" },
+    ];
+
+    timelineClock = 0;
+    nextIndex = 0;
+
+    playAction(animationTimeline[0].action);
+}
+
+// const urotsuki_loader = new GLTFLoader().setPath( 'Urotsuki/' );
+//     urotsuki_loader.load( 'scene.gltf', function ( gltf ) {
+
+//         model = gltf.scene;
+
+//         model.traverse((node) => {
+//             if (node.isMesh || node.isSkinnedMesh) {
+//                 node.castShadow = true;
+//                 node.receiveShadow = true;
+
+//                 // Convert MeshBasicMaterial to a shadow-supporting one
+//                 if (node.material && node.material.type === 'MeshBasicMaterial') {
+//                 const oldMat = node.material;
+//                 node.material = new THREE.MeshStandardMaterial({
+//                     map: oldMat.map || null,
+//                     skinning: !!node.isSkinnedMesh,
+//                     roughness: 0.6,
+//                     metalness: 0.1,
+//                 });
+//                 node.material.needsUpdate = true;
+//                 }
+//             }
+//         });
+
+//         scene.add( model );
+//         model.scale.set(30,30,30); //X Y Z
+//         model.position.set(10,5,20) //X Y Z
+
+//         // --- Animation setup ---
+//         mixer = new THREE.AnimationMixer(model);
+
+//         // --- Animation system with timeline ---
+//         const clips = gltf.animations;
+
+//         // Utility: get animation by name (case-insensitive)
+//         function getClip(name) {
+//             return THREE.AnimationClip.findByName(clips, name) || null;
+//         }
+
+//         // Store actions
+//         actions = {
+//             idle: mixer.clipAction(getClip('Idle')),
+//             walk: mixer.clipAction(getClip('Walking')),
+//             sit:  mixer.clipAction(getClip('Sitting')),
+//         };
+
+//         // Timeline (in seconds)
+//         animationTimeline = [
+//             { time: 0, action: "idle" },     // 0s–5s idle
+//             { time: 5, action: "walk" },     // 5s–10s walk
+//             { time: 10, action: "sit" },     // 10s → sit forever
+//         ];
+
+//         // Track time
+//         timelineClock = 0;
+//         nextIndex = 0;
+//         playAction(animationTimeline[0].action); // initial state
+
+//         animate();
+
+//     } );
+
+const jinhsi_loader = new FBXLoader().setPath("Jinhsi/");
+
+jinhsi_loader.load("Sitting.fbx", function (fbx) {
+
+    model = fbx;
+    model.scale.set(0.09, 0.09, 0.09);
+    model.position.set(10, 5, 20);
+    scene.add(model);
+
+    // Enable shadows
+    model.traverse((node) => {
+        if (node.isMesh || node.isSkinnedMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
         }
+    });
 
-        // Store actions
-        const actions = {
-            idle: mixer.clipAction(getClip('Idle')),
-            walk: mixer.clipAction(getClip('Walking')),
-            sit:  mixer.clipAction(getClip('Sitting')),
-        };
+    // Initialize animation mixer
+    mixer = new THREE.AnimationMixer(model);
 
-        // Enable smooth crossfade
-        function playAction(actionName, fade = 0.5) {
-            if (!actions[actionName]) {
-                console.warn(`Animation "${actionName}" not found`);
-                return;
-            }
+    // After model is loaded → load animations
+    // loadCharacterAnimations();
 
-            const next = actions[actionName];
+    loadAnim("standup", "Sit to Stand.fbx");
+    loadAnim("walk", "Walking.fbx");
 
-            if (mixer.currentAction !== next) {
-                if (mixer.currentAction) {
-                    mixer.currentAction.fadeOut(fade);
-                }
-                next.reset().fadeIn(fade).play();
-                mixer.currentAction = next;
-            }
-        }
-
-        // Timeline (in seconds)
-        const animationTimeline = [
-            { time: 0, action: "idle" },     // 0s–5s idle
-            { time: 5, action: "walk" },     // 5s–10s walk
-            { time: 10, action: "sit" },     // 10s → sit forever
-        ];
-
-        // Track time
-        let timelineClock = 0;
-        let nextIndex = 0;
-        playAction(animationTimeline[0].action); // initial state
+    setupTimeline();
+});
 
 
-        // Play the first animation, or find one by name
-        // const clips = gltf.animations;
-
-        // // Find the one named "sit" (case-insensitive)
-        // const sitClip = THREE.AnimationClip.findByName(clips, 'Sitting');
-
-        // if (sitClip) {
-        //     const action = mixer.clipAction(sitClip);
-        //     action.play(); // start playing the animation
-        // } else {
-        //     console.warn('Sit animation not found — available clips:', clips.map(c => c.name));
-        // }
-
-        animate();
-
-    } );
 
 /// FPS Monitoring
 const stats = new Stats();
-
-// 2. Choose which panel to display (0: FPS, 1: Milliseconds, 2: Memory)
 stats.showPanel(0); 
-
-// 3. Add the monitor to your HTML document
 document.body.appendChild(stats.dom);
 
 // let mesh = new THREE.Mesh(geometry, material);
@@ -243,23 +345,98 @@ document.body.appendChild(stats.dom);
 // mesh.castShadow = true;
 // scene.add(mesh);
 
+// =======================
+// CAMERA MOVEMENT SYSTEM
+// =======================
+
+const movement = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+};
+
+const moveSpeed = 1;      // camera move speed
+
+window.addEventListener("keydown", (e) => {
+    switch (e.code) {
+        case "KeyW": movement.forward = true; break;
+        case "KeyS": movement.backward = true; break;
+        case "KeyA": movement.left = true; break;
+        case "KeyD": movement.right = true; break;
+    }
+});
+
+window.addEventListener("keyup", (e) => {
+    switch (e.code) {
+        case "KeyW": movement.forward = false; break;
+        case "KeyS": movement.backward = false; break;
+        case "KeyA": movement.left = false; break;
+        case "KeyD": movement.right = false; break;
+    }
+});
+
+function updateCameraMovement() {
+    const direction = new THREE.Vector3();
+
+    // WASD movement (world-relative)
+    if (movement.forward) {
+        camera.getWorldDirection(direction);
+        camera.position.addScaledVector(direction, moveSpeed);
+    }
+    if (movement.backward) {
+        camera.getWorldDirection(direction);
+        camera.position.addScaledVector(direction, -moveSpeed);
+    }
+    if (movement.left) {
+        camera.getWorldDirection(direction);
+        direction.cross(camera.up).normalize();
+        camera.position.addScaledVector(direction, -moveSpeed);
+    }
+    if (movement.right) {
+        camera.getWorldDirection(direction);
+        direction.cross(camera.up).normalize();
+        camera.position.addScaledVector(direction, moveSpeed);
+    }
+}
+
 function animate() {
+    stats.begin();
     const delta = clock.getDelta();
+
     if (mixer) {
         mixer.update(delta);
 
-        // timeline logic
+        // Timeline logic...
         timelineClock += delta;
         if (nextIndex < animationTimeline.length &&
-            timelineClock >= animationTimeline[nextIndex].time) 
-        {
+            timelineClock >= animationTimeline[nextIndex].time) {
             playAction(animationTimeline[nextIndex].action);
             nextIndex++;
         }
     }
 
+    // ---- Character Movement While Walking ----
+    if (currentActionName === "walk" && model) {
+        const forward = new THREE.Vector3(0, 0, 1);
+        forward.applyQuaternion(model.quaternion);
+        model.position.addScaledVector(forward, walkSpeed * delta);
+    }
+
+    // ---- CAMERA FOLLOW ----
+    if (model) {
+        const offset = cameraOffset.clone();
+        offset.applyQuaternion(model.quaternion);
+        const desiredPos = model.position.clone().add(offset);
+
+        camera.position.lerp(desiredPos, cameraLerpSpeed);
+        camera.lookAt(model.position);
+    }
+
     renderer.render(scene, camera);
+    stats.end();
     requestAnimationFrame(animate);
 }
+
 
 requestAnimationFrame(animate);
