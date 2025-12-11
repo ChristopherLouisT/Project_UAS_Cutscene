@@ -115,41 +115,85 @@
 
         });
 
-    let actions = {};
-    let currentAction;
-    const loader = new FBXLoader();
-    loader.setPath("Jinhsi/");
-    loader.load("Sitting.fbx", (fbx) => {
-        fbx.scale.setScalar(0.09);
-        fbx.position.set(10,-4,20)
-        scene.add(fbx);
+    // let actions = {};
+    // let currentAction;
+    // const loader = new FBXLoader();
+    // loader.setPath("Jinhsi/");
+    // loader.load("Sitting.fbx", (fbx) => {
+    //     fbx.scale.setScalar(0.09);
+    //     fbx.position.set(10,-4,20)
+    //     scene.add(fbx);
 
-        mixer = new THREE.AnimationMixer(fbx);
+    //     mixer = new THREE.AnimationMixer(fbx);
 
-        const sitAction = mixer.clipAction(fbx.animations[0]);
-        actions["Sitting"] = sitAction;
-        currentAction = sitAction;
-        sitAction.play();
+    //     const sitAction = mixer.clipAction(fbx.animations[0]);
+    //     actions["Sitting"] = sitAction;
+    //     currentAction = sitAction;
+    //     sitAction.play();
 
-        loadAnim("Walk", "Walking.fbx");
+    //     loadAnim("Stand Up", "Stand Up.fbx");
+    //     loadAnim("Walk", "Walking.fbx");
 
-        setTimeout(() => {
-            playAnimation("Walk");
-        }, 5000);
-    });
+    //     setTimeout(() => {
+    //         playAnimation("Stand Up");
+    //     }, 5000);
+
+    //     setTimeout(() => {
+    //         playAnimation("Walk");
+    //     },  1000);
+    // });
+
+let actions = {}, currentAction;
+let animationTimeline = [];
+let timelineClock = 0;
+let nextIndex = 0;
+
+const loader = new FBXLoader();
+loader.setPath("Jinhsi/");
+
+loader.load("Sitting.fbx", (fbx) => {
+    fbx.scale.setScalar(0.09);
+    fbx.position.set(10,-4,20);
+    scene.add(fbx);
+
+    mixer = new THREE.AnimationMixer(fbx);
+
+    const sit = mixer.clipAction(fbx.animations[0]);
+    actions["sit"] = sit;
+    currentAction = sit;
+    sit.play();
+
+    // Load animations after model is ready
+    loadAnim("standup", "Sit to Stand.fbx");
+    loadAnim("walk", "Walking.fbx");
+
+    setupTimeline();
+});
 
     function loadAnim(name, file) {
-        loader.load(file, (fbx) => {
-            const clip = fbx.animations[0];
+        loader.load(file, (animFBX) => {
+            let clip = animFBX.animations[0];
             const action = mixer.clipAction(clip);
-
             actions[name] = action;
         });
     }
 
-    function playAnimation(name, fade = 0.3) {
+    function loadAnimSequential(name, file) {
+    return new Promise((resolve) => {
+        loader.load(file, (fbx) => {
+            const clip = fbx.animations[0];
+            actions[name] = mixer.clipAction(clip);
+            resolve();
+        });
+    });
+}
+
+    function playAction(name, fade = 0.3) {
         const nextAction = actions[name];
-        if (!nextAction) return;
+        if (!nextAction) {
+            console.warn(`Animation "${name}" not loaded yet`);
+            return;
+        }
 
         if (currentAction !== nextAction) {
             if (currentAction) {
@@ -158,6 +202,19 @@
             nextAction.reset().fadeIn(fade).play();
             currentAction = nextAction;
         }
+    }
+
+    function setupTimeline() {
+        animationTimeline = [
+            { time: 0, action: "sit" },
+            { time: 4, action: "standup" },
+            { time: 8, action: "walk" },
+        ];
+
+        timelineClock = 0;
+        nextIndex = 0;
+
+        playAction(animationTimeline[0].action);
     }
 
     // Load animations
@@ -228,7 +285,17 @@
 
     function animate() {
         const delta = clock.getDelta();
-        if (mixer) mixer.update(delta);
+        if (mixer) {
+            mixer.update(delta);
+
+            timelineClock += delta;
+            if (nextIndex < animationTimeline.length &&
+                timelineClock >= animationTimeline[nextIndex].time) {
+
+                playAction(animationTimeline[nextIndex].action);
+                nextIndex++;
+            }
+        }
 
         updateCameraMovement();
 
