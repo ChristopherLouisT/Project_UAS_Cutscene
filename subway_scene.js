@@ -3,6 +3,7 @@ import * as THREE from "three"
 //orbit control
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 
 /* ================ */
 
@@ -114,82 +115,93 @@ const subway_loader = new GLTFLoader().setPath( 'Subway/' );
 
     });
 
-const urotsuki_loader = new GLTFLoader().setPath( 'Urotsuki/' );
-    urotsuki_loader.load( 'scene.gltf', function ( gltf ) {
+let actions = {};
+let currentAction;
+const loader = new FBXLoader();
+loader.setPath("Jinhsi/");
+loader.load("Jinhsi.fbx", (fbx) => {
+  fbx.scale.setScalar(0.01);
+  fbx.position.set(10,5,20)
+  scene.add(fbx);
+  mixer = new THREE.AnimationMixer(fbx);
+  const action = mixer.clipAction(fbx.animations[0]);
+  action.play();
+});
 
-        const model = gltf.scene;
+// =======================
+// CAMERA MOVEMENT SYSTEM
+// =======================
 
-        model.traverse((node) => {
-            if (node.isMesh || node.isSkinnedMesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
+const movement = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+};
 
-                // Convert MeshBasicMaterial to a shadow-supporting one
-                if (node.material && node.material.type === 'MeshBasicMaterial') {
-                const oldMat = node.material;
-                node.material = new THREE.MeshStandardMaterial({
-                    map: oldMat.map || null,
-                    skinning: !!node.isSkinnedMesh,
-                    roughness: 0.6,
-                    metalness: 0.1,
-                });
-                node.material.needsUpdate = true;
-                }
-            }
-        });
+const rotation = {
+    left: false,
+    right: false,
+    up: false,
+    down: false,
+};
 
-        scene.add( model );
-        model.scale.set(30,30,30); //X Y Z
-        model.position.set(10,5,20) //X Y Z
+const moveSpeed = 1;      // camera move speed
 
-        // --- Animation setup ---
-        mixer = new THREE.AnimationMixer(model);
+window.addEventListener("keydown", (e) => {
+    switch (e.code) {
+        case "KeyW": movement.forward = true; break;
+        case "KeyS": movement.backward = true; break;
+        case "KeyA": movement.left = true; break;
+        case "KeyD": movement.right = true; break;
+    }
+});
 
-        // Play the first animation, or find one by name
-        const clips = gltf.animations;
+window.addEventListener("keyup", (e) => {
+    switch (e.code) {
+        case "KeyW": movement.forward = false; break;
+        case "KeyS": movement.backward = false; break;
+        case "KeyA": movement.left = false; break;
+        case "KeyD": movement.right = false; break;
+    }
+});
 
-        // Find the one named "sit" (case-insensitive)
-        const sitClip = THREE.AnimationClip.findByName(clips, 'Sitting');
+// Function to apply movement every frame
+function updateCameraMovement() {
+    const direction = new THREE.Vector3();
 
-        if (sitClip) {
-            const action = mixer.clipAction(sitClip);
-            action.play(); // start playing the animation
-        } else {
-            console.warn('Sit animation not found — available clips:', clips.map(c => c.name));
-        }
+    // WASD movement (world-relative)
+    if (movement.forward) {
+        camera.getWorldDirection(direction);
+        camera.position.addScaledVector(direction, moveSpeed);
+    }
+    if (movement.backward) {
+        camera.getWorldDirection(direction);
+        camera.position.addScaledVector(direction, -moveSpeed);
+    }
+    if (movement.left) {
+        camera.getWorldDirection(direction);
+        direction.cross(camera.up).normalize();
+        camera.position.addScaledVector(direction, -moveSpeed);
+    }
+    if (movement.right) {
+        camera.getWorldDirection(direction);
+        direction.cross(camera.up).normalize();
+        camera.position.addScaledVector(direction, moveSpeed);
+    }
 
-        animate();
-
-    } );
-
-// let mesh = new THREE.Mesh(geometry, material);
-// mesh.rotation.x = -Math.PI / 2;
-// mesh.receiveShadow = true;
-// scene.add(mesh);
-
-
-// let radius = 7;
-// let widthSegments = 12;
-// let heightSegments = 8;
-// geometry = new THREE.SphereGeometry(radius, widthSegments, heightSegments);
-// material = new THREE.MeshPhongMaterial({ color: '#FA8' });
-// mesh = new THREE.Mesh(geometry, material);
-// mesh.position.set(-radius - 1, radius + 2, 0);
-// mesh.castShadow = true;
-// scene.add(mesh);
-
-
-// size = 4;
-// geometry = new THREE.BoxGeometry(size, size, size);
-// material = new THREE.MeshPhongMaterial({ color: '#8AC', transparent: true, opacity: 0.5 });
-// mesh = new THREE.Mesh(geometry, material);
-// mesh.position.set(size + 1, size / 2, 0);
-// mesh.castShadow = true;
-// scene.add(mesh);
+    const front = new THREE.Vector3();
+    camera.getWorldDirection(front);
+    controls.target.copy(camera.position).add(front.multiplyScalar(10));
+    controls.update();
+}
 
 function animate() {
     const delta = clock.getDelta();
     if (mixer) mixer.update(delta);
+
+    updateCameraMovement();
+
     renderer.render(scene, camera)
     requestAnimationFrame(animate);
 }
