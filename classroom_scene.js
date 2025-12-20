@@ -33,26 +33,64 @@ var intensity = 0.3;
 var light = new THREE.AmbientLight(color, intensity);
 scene.add(light);
 
+var skyColor = 0xFFFFFF;  // White
+var groundColor = 0xB97A20;  // Brown Orange
+intensity = 0.6;
+const hemisphere = new THREE.HemisphereLight(skyColor, groundColor, intensity);
+hemisphere.position.set(-25,30,60)
+scene.add(hemisphere);
 
-const sunLight = new THREE.DirectionalLight(0xffe9c0, 2.5);
-sunLight.position.set(150, 140, 80);
-sunLight.target.position.set(-90, -80, -15)
+var hemisphereHelper = new THREE.HemisphereLightHelper(hemisphere);
+scene.add(hemisphereHelper);
+
+// --- POINT LIGHT 1 ---
+const pointLight1 = new THREE.PointLight(0xFFFFFF, 750, 100000); 
+pointLight1.position.set(15, 60, 160);
+scene.add(pointLight1);
+
+
+// --- POINT LIGHT 2 ---
+const pointLight2 = new THREE.PointLight(0xFFFFFF, 750, 10000);
+pointLight2.position.set(50, 60, 160);
+scene.add(pointLight2);
+
+
+// --- POINT LIGHT 3 ---
+const pointLight3 = new THREE.PointLight(0xFFFFFF, 750, 100000); 
+pointLight3.position.set(-85, 60, 160);
+scene.add(pointLight3);
+
+
+// --- POINT LIGHT 4 ---
+const pointLight4 = new THREE.PointLight(0xFFFFFF, 750, 10000);
+pointLight4.position.set(-50, 60, 160);
+scene.add(pointLight4);
+
+
+const sunLight = new THREE.DirectionalLight(0xffe9c0, 20);
+sunLight.position.set(150, 50, 80);
+sunLight.target.position.set(-90, 30, 80);
 sunLight.castShadow = true;
+
+sunLight.shadow.mapSize.width = 2048; 
+sunLight.shadow.mapSize.height = 2048;
 sunLight.shadow.camera.near = 1;
 sunLight.shadow.camera.far = 1000;
-sunLight.shadow.camera.left = -300;
-sunLight.shadow.camera.right = 300;
-sunLight.shadow.camera.top = 300;
-sunLight.shadow.camera.bottom = -300;
-sunLight.shadow.bias = -0.09; 
-scene.add(new THREE.CameraHelper(sunLight.shadow.camera))
+sunLight.shadow.camera.left = -500;
+sunLight.shadow.camera.right = 500;  // Changed from 2200
+sunLight.shadow.camera.top = 500;
+sunLight.shadow.camera.bottom = -500;
+
+// Bias prevents "shadow acne"
+sunLight.shadow.bias = -0.0005; 
+
 scene.add(sunLight);
-scene.add(sunLight.target)
+scene.add(sunLight.target);
 var sunLightHelper = new THREE.DirectionalLightHelper(sunLight)
 scene.add(sunLightHelper)
 
 
-let mixer; // to control animations
+let mixer;
 const clock = new THREE.Clock();
 
 const classroom_loader = new GLTFLoader().setPath('Classroom/');
@@ -120,13 +158,34 @@ const loader = new FBXLoader();
 loader.setPath("Jinhsi/");
 
 loader.load("Sitting.fbx", (fbx) => {
-    fbx.scale.setScalar(0.09);
+    fbx.scale.setScalar(0.11);
     fbx.position.set(10, -4, 20); // Posisi Awal
     scene.add(fbx);
 
     character = fbx; 
 
     mixer = new THREE.AnimationMixer(fbx);
+
+    fbx.traverse(obj => {
+
+        if (obj.isMesh || obj.isSkinnedMesh) {
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+
+            // Ensure material supports lighting
+            if (obj.material) {
+                obj.material.needsUpdate = true;
+            }
+        }
+
+        if (obj.material) {
+            obj.material.shadowSide = THREE.DoubleSide; // Helps with thin meshes
+        }
+
+        if (obj.isLight) {
+            obj.intensity = 0;
+        }
+    });
 
     const sit = mixer.clipAction(fbx.animations[0]);
     actions["sit"] = sit;
