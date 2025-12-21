@@ -41,7 +41,6 @@ loadingManager.onLoad = function ( ) {
 	console.log( 'Loading complete! Starting animation...' );
     document.getElementById('loading-overlay').style.display = 'none';
     isReady = true;
-    // Small delay to ensure the browser has finished its first frame render
     setTimeout(() => {
         isReady = true; 
     }, 100);
@@ -81,7 +80,7 @@ scene.add(light);
 // Spot Light
 color = 0xFFFFFF;
 intensity = 300;
-const spotLight1 = new THREE.SpotLight(0xffffff, 300, 300, Math.PI / 3);
+const spotLight1 = new THREE.SpotLight(0xffffff, 800, 300, Math.PI / 3);
 spotLight1.penumbra = 0.5;
 spotLight1.position.set(-20, 26, 0);
 spotLight1.target.position.set(-20, 0, 0);
@@ -96,7 +95,7 @@ spotLight1.target.updateMatrixWorld()
 // const shadowHelper = new THREE.CameraHelper(spotLight1.shadow.camera);
 // scene.add(shadowHelper);
 
-const spotLight2 = new THREE.SpotLight(0xffffff, 300, 300, Math.PI / 3);
+const spotLight2 = new THREE.SpotLight(0xffffff, 800, 300, Math.PI / 3);
 spotLight2.penumbra = 0.5;
 spotLight2.position.set(20, 26, 0);
 spotLight2.target.position.set(20, 0, 0);
@@ -110,7 +109,7 @@ scene.add(spotLight2.target);
 // const shadowHelper2 = new THREE.CameraHelper(spotLight2.shadow.camera);
 // scene.add(shadowHelper2);
 
-const spotLight3 = new THREE.SpotLight(0xffffff, 300, 300, Math.PI / 3);
+const spotLight3 = new THREE.SpotLight(0xffffff, 800, 300, Math.PI / 3);
 spotLight3.penumbra = 0.5;
 spotLight3.position.set(0, 26, -20);
 spotLight3.target.position.set(0, 0, -20);
@@ -125,7 +124,7 @@ scene.add(spotLight3.target);
 // scene.add(shadowHelper3);
 
 
-const spotLight4 = new THREE.SpotLight(0xffffff, 300, 300, Math.PI / 8);
+const spotLight4 = new THREE.SpotLight(0xffffff, 800, 300, Math.PI / 8);
 spotLight4.penumbra = 0.5;
 spotLight4.position.set(0, 26, 15);
 spotLight4.target.position.set(0, 0, 15);
@@ -140,7 +139,7 @@ scene.add(spotLight4.target);
 // scene.add(shadowHelper4);
 
 
-let mixer; // to control animations
+let mixer;
 const clock = new THREE.Clock();
 
 const market_loader = new GLTFLoader(loadingManager).setPath( 'Market/' );
@@ -152,7 +151,6 @@ const market_loader = new GLTFLoader(loadingManager).setPath( 'Market/' );
             if (node.isMesh) {
                 const oldMat = node.material;
                 
-                // Replace MeshBasicMaterial with light-reactive material
                 if (oldMat && oldMat.type === 'MeshBasicMaterial') {
                     const newMat = new THREE.MeshStandardMaterial({
                         map: oldMat.map || null,
@@ -175,6 +173,7 @@ const market_loader = new GLTFLoader(loadingManager).setPath( 'Market/' );
 
         scene.add( market );
         market.scale.set(10,10,10); //X Y Z
+        logMaterialInfo(market, "Market Scene");
         animate();
 
     });
@@ -182,13 +181,13 @@ const market_loader = new GLTFLoader(loadingManager).setPath( 'Market/' );
 let actions = {}, currentAction;
 let characterModel;
 let isWalkingForward;
-let currentPhase = "walk1a"; // New sequence: walk1a -> turnToThink -> thinking -> turnBack -> walk1b -> turnLeft -> walk2
+let currentPhase = "walk1a";
 let walkDistance = 0;
 const phase1Target = 40;
 const phase1aTarget = 20; // Stop halfway for thinking
 const phase2Target = 17;
 const walkSpeed = 4;
-let thinkTime = 0; // Timer for the thinking animation
+let thinkTime = 0;
 
 const loader = new FBXLoader(loadingManager);
 loader.setPath("Jinhsi/");
@@ -199,6 +198,7 @@ loader.load("Walking.fbx", (fbx) => {
     fbx.rotation.y = Math.PI  + (Math.PI / 24);
 
     scene.add(fbx);
+    // logMaterialInfo(fbx, "Jinhsi Character");
 
     fbx.traverse(obj => {
 
@@ -206,14 +206,13 @@ loader.load("Walking.fbx", (fbx) => {
             obj.castShadow = true;
             obj.receiveShadow = true;
 
-            // Ensure material supports lighting
             if (obj.material) {
                 obj.material.needsUpdate = true;
             }
         }
 
         if (obj.material) {
-            obj.material.shadowSide = THREE.DoubleSide; // Helps with thin meshes
+            obj.material.shadowSide = THREE.DoubleSide;
         }
 
         if (obj.isLight) {
@@ -222,15 +221,14 @@ loader.load("Walking.fbx", (fbx) => {
     });
 
     mixer = new THREE.AnimationMixer(fbx);
-    characterModel = fbx; // To reference the fbx outside the loader
+    characterModel = fbx;
 
     if (fbx.animations.length > 0) {
         const walkAction = mixer.clipAction(fbx.animations[0]);
         actions["walk"] = walkAction;
-        currentAction = walkAction; // Set this so the 'turn' logic can fade it out
-        walkAction.play();         // Start the bones moving!
+        currentAction = walkAction;
+        walkAction.play();
     }
-    // ----------------------------------------
 
     isWalkingForward = true;
     loadAnim("turnLeft", "Left Turn 90.fbx");
@@ -246,7 +244,7 @@ const movement = {
         right: false,
     };
 
-const moveSpeed = 1;      // camera move speed
+const moveSpeed = 1;  // camera movement speed
 
     window.addEventListener("keydown", (e) => {
         switch (e.code) {
@@ -273,24 +271,20 @@ function loadAnim(name, file) {
         const action = mixer.clipAction(anim.animations[0]);
         actions[name] = action;
         
-        // Turn animations usually only play once
         if (name === "turnLeft") {
             action.setLoop(THREE.LoopOnce);
-            action.clampWhenFinished = true; // Stay at the end frame
+            action.clampWhenFinished = true;
         }
         else if (name === "idle") {
-            // Ensure Idle loops forever
-            action.setLoop(THREE.LoopRepeat);
+            action.setLoop(THREE.LoopRepeat); // Agar terus idle jika selesai
             action.clampWhenFinished = false; 
         }
     });
 }
 
-// Function to apply movement every frame
 function updateCameraMovement() {
     const direction = new THREE.Vector3();
 
-    // WASD movement (world-relative)
     if (movement.forward) {
         camera.getWorldDirection(direction);
         camera.position.addScaledVector(direction, moveSpeed);
@@ -316,7 +310,7 @@ function updateCameraMovement() {
     controls.update();
 }
 
-let lastPhase = ""; // Track the previous phase to detect the "Cut" moment
+let lastPhase = "";
 
 function updateCinematicCamera(delta) {
     if (!characterModel) return;
@@ -325,25 +319,24 @@ function updateCinematicCamera(delta) {
     const targetPosition = new THREE.Vector3();
     const lookAtPos = charPos.clone().add(new THREE.Vector3(0, 10, 0));
 
-    // Detect if the phase JUST changed this frame
+    // Detect if the phase JUST changed this frame for direct camera change
     const didPhaseChange = lastPhase !== currentPhase;
 
-    // 1. Determine Offset based on Phase
     switch (currentPhase) {
         case "walk1a":
-            cameraOffset.set(0, 15, 15); // BACK
+            cameraOffset.set(0, 15, 15); // First half of phase 1 walk, Follow from her back
             break;
         case "turnToThink":
         case "thinking":
-            cameraOffset.set(0, 9, -10); // FRONT (Adjusted height to 7 for face)
+            cameraOffset.set(0, 9, -10); // Thinking, record near her body
             break;
         case "turnBack":
         case "walk1b":
-            cameraOffset.set(0, 12, -15); // FRONT (Wide)
+            cameraOffset.set(0, 12, -15); // Last half of phase 1 walk, Follow from her front
             break;
         case "turning":
         case "walk2":
-            cameraOffset.set(20, 15, 0); // SIDE/BACK
+            cameraOffset.set(20, 15, 0); // Follow from her back again
             break;
         case "idle":
             cameraOffset.set(-25, 10, 25);
@@ -352,13 +345,12 @@ function updateCinematicCamera(delta) {
 
     targetPosition.copy(charPos).add(cameraOffset);
 
-    // 2. THE JUMP CUT LOGIC
-    // If we just entered "turnToThink" or "thinking", teleport the camera instantly
+    // THE JUMP CUT LOGIC
+    // If think, teleport camera instantly for better transition
     if (didPhaseChange && (currentPhase === "turnToThink" || currentPhase === "thinking")) {
         camera.position.copy(targetPosition);
         controls.target.copy(lookAtPos);
     } else {
-        // Otherwise, use smooth lerping for natural following
         camera.position.lerp(targetPosition, cameraLerpSpeed);
         controls.target.lerp(lookAtPos, cameraLerpSpeed);
     }
@@ -394,8 +386,7 @@ function animate() {
 
                 if (walkDistance >= phase1aTarget) {
                     currentPhase = "turnToThink";
-                    // Transition to turn right a bit (procedural rotation)
-                    fadeToAction("walk", 0.5); // Keep walking or switch to idle if preferred
+                    fadeToAction("walk", 0.5);
                 }
             }
 
@@ -404,7 +395,6 @@ function animate() {
                 const turnSpeed = 2.0;
                 characterModel.rotation.y -= turnSpeed * delta; // Turn right
                 
-                // Turn roughly 45 degrees (PI/4)
                 if (characterModel.rotation.y <= (Math.PI + Math.PI / 24) - Math.PI / 4) {
                     currentPhase = "thinking";
                     fadeToAction("think", 0.5);
@@ -428,7 +418,7 @@ function animate() {
                 
                 // Check if returned to original rotation
                 if (characterModel.rotation.y >= (Math.PI + Math.PI / 24)) {
-                    characterModel.rotation.y = (Math.PI + Math.PI / 24); // Snap to perfect alignment
+                    characterModel.rotation.y = (Math.PI + Math.PI / 24);
                     currentPhase = "walk1b";
                 }
             }
@@ -439,7 +429,7 @@ function animate() {
                 walkDistance += moveStep;
 
                 if (walkDistance >= phase1Target) {
-                    currentPhase = "turning"; // Now do the 90-degree left turn
+                    currentPhase = "turning";
                     if (actions["turnLeft"]) {
                         const prevAction = currentAction;
                         currentAction = actions["turnLeft"];
@@ -464,20 +454,51 @@ function animate() {
                 characterModel.position.x -= moveStep;
                 walkDistance += moveStep;
                 if (walkDistance >= phase2Target) {
-                    currentPhase = "finished"; // Change state so this only triggers once
+                    currentPhase = "finished";
                     fadeToAction("idle", 0.5);
                 }
             }
-
-            updateCinematicCamera(delta);
+            
+            if (currentPhase == "finished") {
+                updateCameraMovement();
+            }
+            else {
+                updateCinematicCamera(delta);
+            }
+            
         }
-    }
-    else {
-        // Only allow manual movement if the character isn't ready/moving
-        updateCameraMovement();
     }
 
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
+
+function logMaterialInfo(model, name) {
+    console.log(`--- Material Info for: ${name} ---`);
+    model.traverse((node) => {
+        if (node.isMesh) {
+            const mat = node.material;
+            
+            // Diffuse 
+            const diffuse = mat.color ? mat.color.getStyle() : "No color property";
+            
+            // Transparency
+            const transparency = {
+                isTransparent: mat.transparent,
+                opacity: mat.opacity
+            };
+
+            const specularInfo = mat.type === 'MeshPhongMaterial' 
+                ? mat.specular.getStyle() 
+                : `Metalness: ${mat.metalness}, Roughness: ${mat.roughness}`;
+
+            console.log(`Mesh: ${node.name}`);
+            console.log(` > Diffuse (Color): ${diffuse}`);
+            console.log(` > Transparency: ${transparency.isTransparent} (Alpha: ${transparency.opacity})`);
+            console.log(` > Specular/Surface: ${specularInfo}`);
+            
+            if (mat.map) console.log(` > Texture (Diffuse Map): Attached`);
+        }
+    });
+}
