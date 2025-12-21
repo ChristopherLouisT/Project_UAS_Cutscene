@@ -397,18 +397,11 @@ function animate() {
             duration: 2.5
         },
         {
-            center: new THREE.Vector3(18,    4,   -15),
-            camPos: new THREE.Vector3(18,    12,   10),
-            lookAt: new THREE.Vector3(0,    6,   -18),
+            center: new THREE.Vector3(18,    4,   -10),
+            camPos: new THREE.Vector3(28,    12,  -10),
+            lookAt: new THREE.Vector3(18,    8,   -10),
             radius: 5,
-            duration: 5
-        },
-        {
-            center: new THREE.Vector3(22,    4,    10),
-            camPos: new THREE.Vector3(10,    12,   10),
-            lookAt: new THREE.Vector3(20,    10,   10),
-            radius: 5,
-            duration: 999
+            duration: 2.5
         }
     ];
 
