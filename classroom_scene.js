@@ -20,14 +20,57 @@
     //setup scene
     const scene = new THREE.Scene();
 
+
     //setup camera
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     // let cameraOffset = new THREE.Vector3(10,20,50); 
     // let cameraLookOffset = new THREE.Vector3(0,20,0);
     // let cameraLerpSpeed = 0.1;
-    let GLOBAL_LOOK_TARGET = new THREE.Vector3(10, 20, 40);
+    let GLOBAL_LOOK_TARGET = new THREE.Vector3(10,20, 40);
+
+    const CEILING_LOOK_TARGET = new THREE.Vector3(10, 50, 40);
+    const CHARACTER_LOOK_TARGET = new THREE.Vector3(10, 20, 40);
+
     camera.position.set(10, 20, 60);
     camera.lookAt(0, 0, 0);
+    camera.rotation.set(0, -Math.PI / 2, 0); // looking straight up
+
+    GLOBAL_LOOK_TARGET.copy(CEILING_LOOK_TARGET);
+    camera.lookAt(GLOBAL_LOOK_TARGET);
+
+    //Camera collision
+    const cameraRaycaster = new THREE.Raycaster();
+    const collisionOffset = 1.2;     // distance from wall
+    const collisionSmooth = 0.15;    // smoothing factor
+    const collisionObjects = [];     // meshes to collide with
+
+    //Delay
+    const START_DELAY = 2; // seconds
+    let startDelayTimer = 0;
+    let timelineStarted = false;
+
+
+
+    const CameraPhase = {
+        TILT: "tilt",
+        DOLLY: "dolly",
+        ORBIT_PREP: "orbit_prep",
+        ORBIT: "orbit",
+        IDLE: "idle",
+        PAN: "pan",
+    };
+
+    let cameraPhase = CameraPhase.TILT;
+    let orbitDone = false;
+    let orbitProgress = 0;
+
+    const CAMERA_TIMELINE = {
+        TILT_END: 2,        // 2s
+        DOLLY_END: 6,       // 4s dolly (2 → 6)
+        ORBIT_END: 12,      // 5s orbit (6 → 12) extra one second for orbit prep 
+    };
+
+
 
     const cameraShots = {
     SIT: {
@@ -41,13 +84,13 @@
     },
 
     WALK_LEFT_FAR: {
-        position: new THREE.Vector3(-90, 20, 45),
-        lookTarget: new THREE.Vector3(-40, 20, 45),
+        position: new THREE.Vector3(-50, 40, 45),
+        lookTarget: new THREE.Vector3(-20, 30, 45),
     },
 
     WALK_TURN_LEFT: {
-        position: new THREE.Vector3(-40, 20, 60),
-        lookTarget: new THREE.Vector3(-40, 20, 90),
+        position: new THREE.Vector3(-30, 20, 60),
+        lookTarget: new THREE.Vector3(-30, 20, 90),
     }
 };
 
@@ -62,11 +105,11 @@
     let lastAction = null;
     let lastWaypointIndex = -1;
 
-
     //setup orbit control
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 5, 0);
     controls.update();
+
 
     // Ambient Light
     var color = 0xFFFFFF;
@@ -143,6 +186,7 @@
         classroom.traverse((node) => {
             if (node.isMesh) {
                 const oldMat = node.material;
+                collisionObjects.push(node);
 
                 // Replace MeshBasicMaterial with light-reactive material
                 if (oldMat && oldMat.type === 'MeshBasicMaterial') {
@@ -167,6 +211,11 @@
 
         scene.add(classroom);
         classroom.scale.set(10, 10, 10); //X Y Z
+
+        // reset camera delay
+        cameraTimelineEnabled = false;
+        cameraDelayTimer = 0;
+
         animate();
 
     });
@@ -199,6 +248,15 @@
     // Helper object untuk menghitung rotasi tanpa mengganggu mesh asli
     const dummyTarget = new THREE.Object3D(); 
     // --------------------------------------
+
+    // === CHARACTER COLLISION ===
+    const CHAR_HEIGHT = 16;
+    const CHAR_RADIUS = 4;
+
+    const charCollider = {
+        height: CHAR_HEIGHT,
+        radius: CHAR_RADIUS,
+    };
 
     const loader = new FBXLoader();
     loader.setPath("Jinhsi/");
@@ -269,11 +327,36 @@
         }
     }
 
+    function checkCharacterCollision(from, to) {
+        const direction = to.clone().sub(from);
+        const distance = direction.length();
+        direction.normalize();
+
+        // Capsule = multiple raycasts
+        const origins = [
+            from.clone().add(new THREE.Vector3(0, 2, 0)),                  // feet
+            from.clone().add(new THREE.Vector3(0, CHAR_HEIGHT * 0.5, 0)), // mid
+            from.clone().add(new THREE.Vector3(0, CHAR_HEIGHT, 0)),       // head
+        ];
+
+        for (const origin of origins) {
+            const raycaster = new THREE.Raycaster(origin, direction, 0, distance + CHAR_RADIUS);
+            const hits = raycaster.intersectObjects(collisionObjects, true);
+
+            if (hits.length > 0) {
+                return true; // collision detected
+            }
+        }
+
+        return false; // safe
+    }
+
+
     function setupTimeline() {
         animationTimeline = [
-            { time: 5, action: "sit" },
-            { time: 8, action: "standup" }, // Durasi standup biasanya 2-3 detik
-            { time: 10, action: "walk" },  // Kasih jeda sedikit biar rotasi selesai sempurna
+            { time: 2, action: "sit" },
+            { time: 12, action: "standup" }, // Durasi standup biasanya 2-3 detik
+            { time: 14, action: "walk" },  // Kasih jeda sedikit biar rotasi selesai sempurna
         ];
 
         timelineClock = 0;
@@ -313,8 +396,18 @@
                     // Hitung arah
                     const direction = new THREE.Vector3().subVectors(target, character.position).normalize();
                     
-                    // Pindahkan posisi
-                    character.position.add(direction.multiplyScalar(charSpeed * delta));
+                    // Pindahkan posisi 
+                    // character.position.y = -4; // lock ground height
+                    const moveStep = direction.clone().multiplyScalar(charSpeed * delta);
+                    const nextPos = character.position.clone().add(moveStep);
+
+                    if (!checkCharacterCollision(character.position, nextPos)) {
+                        character.position.copy(nextPos);
+                    } else {
+                        // Optional: slide instead of stopping
+                        // character.position.add(moveStep.projectOnPlane(new THREE.Vector3(0,1,0)));
+                    }
+
                     
                     // Rotasi badan menghadap tujuan (Smooth turn saat jalan)
                     dummyTarget.position.copy(character.position);
@@ -437,36 +530,115 @@
     // CINEMATIC ORBIT-FOLLOW
     // =======================
 
-    let orbitEnabled = true;       // kamera mengikuti karakter
-    let orbitDistance = 45;        // jarak kamera dari karakter
-    let orbitHeight = 18;          // ketinggian kamera
-    let orbitAngle = Math.PI * 1.1 // posisi orbit awal
-    let orbitSpeed = 0.6;          // kecepatan rotasi orbit
-    let orbitSmooth = 0.1;         // smoothness
+    let orbitStartAngle = 0;
+    let orbitRadius = 0;
+    let orbitInitialized = false;
+    let orbitPrepProgress = 0;
+    const ORBIT_PREP_DURATION = 0.8;   // seconds
+    const ORBIT_EXTRA_DISTANCE = 20;   // how much to pull back
+    let orbitBaseRadius = 0;
 
-    function updateOrbitFollow(delta) {
-        if (!character || !orbitEnabled) return;
 
-        // Tambahkan rotasi orbit otomatis
-        orbitAngle += orbitSpeed * delta;
+    function beginOrbit() {
+        const offset = camera.position.clone().sub(GLOBAL_LOOK_TARGET);
 
-        // Posisi karakter
-        const charPos = character.position.clone();
+        orbitBaseRadius = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
+        orbitRadius = orbitBaseRadius;
+        orbitStartAngle = Math.atan2(offset.z, offset.x);
 
-        // Hitung posisi kamera ideal di orbit
-        const idealX = charPos.x + Math.cos(orbitAngle) * orbitDistance;
-        const idealZ = charPos.z + Math.sin(orbitAngle) * orbitDistance;
-        const idealY = charPos.y + orbitHeight;
-
-        const idealPos = new THREE.Vector3(idealX, idealY, idealZ);
-
-        // LERP agar gerakan kamera halus
-        camera.position.lerp(idealPos, orbitSmooth);
-
-        // Kamera selalu menghadap karakter
-        const lookAtPos = charPos.clone().add(new THREE.Vector3(0, 10, 0));
-        camera.lookAt(lookAtPos);
+        orbitProgress = 0;
+        orbitPrepProgress = 0;
+        orbitInitialized = true;
     }
+
+
+    function updateOrbitPrep(delta) {
+        orbitPrepProgress += delta;
+        const t = THREE.MathUtils.clamp(
+            orbitPrepProgress / ORBIT_PREP_DURATION,
+            0,
+            1
+        );
+
+        const eased = THREE.MathUtils.smoothstep(t, 0, 1);
+
+        orbitRadius = THREE.MathUtils.lerp(
+            orbitBaseRadius,
+            orbitBaseRadius + ORBIT_EXTRA_DISTANCE,
+            eased
+        );
+
+        const angle = orbitStartAngle;
+
+        const center = GLOBAL_LOOK_TARGET;
+        const x = center.x + Math.cos(angle) * orbitRadius;
+        const z = center.z + Math.sin(angle) * orbitRadius;
+
+        camera.position.set(x, camera.position.y, z);
+        camera.lookAt(GLOBAL_LOOK_TARGET);
+
+        if (t >= 1) {
+            orbitPrepProgress = 0;
+            orbitProgress = 0;      
+            cameraPhase = CameraPhase.ORBIT;
+        }
+    }
+
+
+    function updateOrbitOnce(delta, duration) {
+        if (!orbitInitialized) return;
+
+        orbitProgress += delta;
+        const t = THREE.MathUtils.clamp(orbitProgress / duration, 0, 1);
+
+        // EXACTLY one revolution
+        const angle = orbitStartAngle + t * Math.PI * 2;
+
+        const center = GLOBAL_LOOK_TARGET;
+        const x = center.x + Math.cos(angle) * orbitRadius;
+        const z = center.z + Math.sin(angle) * orbitRadius;
+
+        camera.position.set(x, camera.position.y, z);
+        camera.lookAt(GLOBAL_LOOK_TARGET);
+
+        if (t >= 1) {
+            cameraPhase = CameraPhase.IDLE;
+            orbitInitialized = false;
+        }
+    }
+
+
+
+    const PAN_SETTINGS = {
+        distance: 56,
+        fov: 55,
+        speed: 2.5,
+    };
+
+    function panFollowCharacter(shot, delta) {
+        if (!character) return;
+
+        // Smooth camera position toward the pan rail
+        camera.position.lerp(shot.position, PAN_SETTINGS.speed * delta);
+
+        // Look target follows character (real pan)
+        const charLook = character.position.clone();
+        charLook.y += 15; // eye level (NOT an offset snap, just framing)
+
+        GLOBAL_LOOK_TARGET.lerp(charLook, PAN_SETTINGS.speed * delta);
+        camera.lookAt(GLOBAL_LOOK_TARGET);
+
+        // Cinematic FOV compression
+        camera.fov = THREE.MathUtils.lerp(
+            camera.fov,
+            PAN_SETTINGS.fov,
+            2.0 * delta
+        );
+        camera.updateProjectionMatrix();
+    }
+
+
+
 
     function snapCamera(shot) {
         camera.position.copy(shot.position);
@@ -474,93 +646,168 @@
         camera.lookAt(GLOBAL_LOOK_TARGET);
     }
 
+    let tiltProgress = 0;
+    let tiltStartTarget = new THREE.Vector3();
+    let tiltEndTarget = new THREE.Vector3();
+    let tiltInitialized = false;
 
 
-    function snapCameraToShot(shot) {
-        if (!character) return;
+    function updateCameraTilt(delta, duration = 1) {
+        tiltProgress += delta;
+        const t = THREE.MathUtils.clamp(tiltProgress / duration, 0, 1);
+        camera.position.set(10,20,80);
 
-        const charPos = character.position.clone();
+        // cinematic ease
+        const eased = THREE.MathUtils.smoothstep(t, 0, 1);
 
-        // left direction of character
-        const left = new THREE.Vector3(-1, 0, 0)
-            .applyQuaternion(character.quaternion)
-            .normalize();
+        GLOBAL_LOOK_TARGET.lerpVectors(
+            CEILING_LOOK_TARGET,
+            CHARACTER_LOOK_TARGET,
+            eased
+        );
 
-        const forward = new THREE.Vector3(0, 0, 1)
-            .applyQuaternion(character.quaternion)
-            .normalize();
+        camera.lookAt(GLOBAL_LOOK_TARGET);
 
-        const offset = new THREE.Vector3()
-            .add(left.multiplyScalar(shot.offset.x))
-            .add(new THREE.Vector3(0, shot.offset.y, 0))
-            .add(forward.multiplyScalar(shot.offset.z));
-
-        camera.position.copy(charPos.clone().add(offset));
-
-        camera.lookAt(charPos.clone().add(new THREE.Vector3(0, 15, 0)));
+        if (t >= 1) {
+            tiltProgress = 0;
+            cameraPhase = CameraPhase.DOLLY;
+        }
     }
 
 
-    function updateAutoZoom(delta) {
-        let targetZoom = zoomNormal;
-        // let targetZoom = zoomSit;
 
-        if (currentAction === actions["sit"]) {
-            targetZoom = zoomSit;
-        }
 
-        // Move zoom at CONSTANT SPEED
-        if (currentZoom < targetZoom) {
-            currentZoom += zoomSpeed * delta;
-            //Only zoom out
-            if (currentZoom > targetZoom) currentZoom = targetZoom;
-        } 
-        else if (currentZoom > targetZoom) {
-            // currentZoom -= zoomSpeed * delta;
-            currentZoom = targetZoom;
-            if (currentZoom < targetZoom) currentZoom = targetZoom;
-        }
+    let dollyProgress = 0;
+    
 
-        // Direction from global target to camera
-        const dir = camera.position.clone()
+    function updateDolly(delta, duration, startDist, endDist) {
+        dollyProgress += delta;
+        const t = Math.min(dollyProgress / duration, 1);
+
+        // Linear interpolation (cinematic & predictable)
+        const dist = THREE.MathUtils.lerp(startDist, endDist, t);
+
+        const dir = camera.position
+            .clone()
             .sub(GLOBAL_LOOK_TARGET)
             .normalize();
 
-        // Apply zoom
         camera.position.copy(
-            GLOBAL_LOOK_TARGET.clone().add(dir.multiplyScalar(currentZoom))
+            GLOBAL_LOOK_TARGET.clone().add(dir.multiplyScalar(dist))
         );
-    }
 
-    function updateCameraTimeline() {
+        if (t >= 1) {
+            const offset = camera.position.clone().sub(GLOBAL_LOOK_TARGET);
+            orbitRadius = offset.length();
+            orbitStartAngle = Math.atan2(offset.z, offset.x);
 
-        // SITTING → wide, calm
-        if (currentAction === actions["sit"] && lastAction !== "sit") {
-            snapCamera(cameraShots.SIT);
-            lastAction = "sit";
+            beginOrbit();    
+            cameraPhase = CameraPhase.ORBIT_PREP;
+            dollyProgress = 0;
         }
 
-        // STANDING UP → cut to close left
+    }
+
+    function resolveCameraCollision(delta) {
+        const origin = GLOBAL_LOOK_TARGET.clone();
+        origin.y += 8; // eye level
+
+        const desiredPos = camera.position.clone();
+
+        const dir = desiredPos.clone().sub(origin);
+        const dist = dir.length();
+        dir.normalize();
+
+        cameraRaycaster.set(origin, dir);
+        cameraRaycaster.far = dist;
+
+        const hits = cameraRaycaster.intersectObjects(collisionObjects, true);
+        if (!hits.length) return;
+
+        const hit = hits[0];
+
+        // Ignore low objects (desks, chairs)
+        if (hit.point.y < origin.y - 5) return;
+
+        const safeDist = Math.max(hit.distance - collisionOffset, 4);
+        const safePos = origin.clone().add(dir.multiplyScalar(safeDist));
+
+        camera.position.lerp(safePos, collisionSmooth);
+    }
+
+
+
+    let orbitSequenceStarted = false;
+    function updateCameraTimeline(delta) {
+        // SITTING CAMERA SEQUENCE
+        if (currentAction === actions["sit"]) {
+
+            // 0 → 1s : TILT
+            if (timelineClock < CAMERA_TIMELINE.TILT_END) {
+                cameraPhase = CameraPhase.TILT;
+                updateCameraTilt(delta, 2); // 1 second tilt
+                return;
+            }
+
+
+            // 1 → 5s : DOLLY
+            if (timelineClock < CAMERA_TIMELINE.DOLLY_END) {
+                cameraPhase = CameraPhase.DOLLY;
+                updateDolly(delta, 4, 80, 20); // far → close
+                return;
+            }
+
+
+            // 5 → 10s : ORBIT ONCE
+           if (timelineClock < CAMERA_TIMELINE.ORBIT_END) {
+                if (!orbitInitialized) {
+                    beginOrbit();
+                    cameraPhase = CameraPhase.ORBIT_PREP;
+                }
+
+                if (cameraPhase === CameraPhase.ORBIT_PREP) {
+                    updateOrbitPrep(delta);
+                    return;
+                }
+
+                if (cameraPhase === CameraPhase.ORBIT) {
+                    updateOrbitOnce(delta, 5);
+                    return;
+                }
+            }
+
+            cameraPhase = CameraPhase.IDLE;
+        }
+
+        // STAND CUT
         if (currentAction === actions["standup"] && lastAction !== "standup") {
             snapCamera(cameraShots.STAND_LEFT_CLOSE);
             lastAction = "standup";
         }
 
-        // WALKING → far left tracking view
+        // WALK PAN
+
         if (currentAction === actions["walk"] && lastAction !== "walk") {
-            snapCamera(cameraShots.WALK_LEFT_FAR);
+            cameraPhase = CameraPhase.PAN;
             lastAction = "walk";
         }
 
-        // TURN / DIRECTION CHANGE → cut again
-        if (
-            currentAction === actions["walk"] &&
-            waypointIndex == 2
-        ) {
-            snapCamera(cameraShots.WALK_TURN_LEFT);
-            lastWaypointIndex = waypointIndex;
+        if (cameraPhase === CameraPhase.PAN) {
+            panFollowCharacter(cameraShots.WALK_LEFT_FAR, delta);
         }
+
+        if (currentAction === actions["walk"] && waypointIndex === 2) {
+            panFollowCharacter(cameraShots.WALK_TURN_LEFT, delta);
+        }
+
+        if (cameraPhase !== CameraPhase.PAN) {
+            camera.fov = THREE.MathUtils.lerp(camera.fov, 75, 1.5 * delta);
+            camera.updateProjectionMatrix();
+        }
+
     }
+
+
 
     function resize() {
     const width = window.innerWidth;
@@ -577,42 +824,54 @@
 
 
     function animate() {
-        // stats.begin();
         const delta = clock.getDelta();
-        
+        // START DELAY GATE
+
+        if (!timelineStarted) {
+            startDelayTimer += delta;
+
+            if (startDelayTimer >= START_DELAY) {
+                timelineStarted = true;
+
+                // reset clocks so timelines start clean
+                timelineClock = 0;
+                tiltProgress = 0;
+                dollyProgress = 0;
+                orbitProgress = 0;
+
+                cameraPhase = CameraPhase.TILT;
+            }
+
+            // Render ONLY (no logic)
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+            return;
+        }
+
+        // NORMAL UPDATE AFTER DELAY
+
         if (mixer) {
             mixer.update(delta);
 
             timelineClock += delta;
-            if (nextIndex < animationTimeline.length &&
-                timelineClock >= animationTimeline[nextIndex].time) {
-
+            if (
+                nextIndex < animationTimeline.length &&
+                timelineClock >= animationTimeline[nextIndex].time
+            ) {
                 playAction(animationTimeline[nextIndex].action);
                 nextIndex++;
             }
         }
 
-        // Update logika pergerakan karakter
         updateCharacterMove(delta);
-
-        updateCameraTimeline();
-
-        // Update kamera user
-        // updateCameraMovement();
-
+        updateCameraTimeline(delta);
         updateCameraDirectionOnly();
+        resolveCameraCollision(delta);
 
-        updateAutoZoom(delta);
-
-        // Camera follow character
-        // updateCameraFollow();
-
-        // updateOrbitFollow(delta);
-
-        renderer.render(scene, camera)
-        // stats.end();
+        renderer.render(scene, camera);
         requestAnimationFrame(animate);
     }
+
 
 
     requestAnimationFrame(animate);

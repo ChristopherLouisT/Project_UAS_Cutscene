@@ -42,8 +42,8 @@ var groundColor = 0xB97A20;  // brownish orange
 const HemisphereLight = new THREE.HemisphereLight(0xF5F5F5, 0xF5F5F5, 1.5);
 HemisphereLight.position.set(-60, -10, 0)
 scene.add(HemisphereLight);
-var hemisphereLightHelper = new THREE.HemisphereLightHelper(HemisphereLight);
-scene.add(hemisphereLightHelper);
+// var hemisphereLightHelper = new THREE.HemisphereLightHelper(HemisphereLight);
+// scene.add(hemisphereLightHelper);
 
 // Spot Light
 color = 0xFFFFFF;
@@ -59,12 +59,12 @@ spotLight.shadow.mapSize.height = 2048;
 spotLight.shadow.camera.near = 10; 
 spotLight.shadow.camera.far = 1000;
 spotLight.shadow.bias = -0.0001;
-scene.add(new THREE.CameraHelper(spotLight.shadow.camera)) 
+// scene.add(new THREE.CameraHelper(spotLight.shadow.camera)) 
 scene.add(spotLight);
 scene.add(spotLight.target);
 
-var spotLightHelper = new THREE.SpotLightHelper(spotLight);
-scene.add(spotLightHelper);
+// var spotLightHelper = new THREE.SpotLightHelper(spotLight);
+// scene.add(spotLightHelper);
 
 const sky = new Sky();
 sky.scale.setScalar(450000);
@@ -93,6 +93,98 @@ skyUniforms['sunPosition'].value.copy(sun);
 
 let mixer; // to control animations
 const clock = new THREE.Clock();
+
+//For collisions
+const colliders = [];
+
+function collectColliders(root) {
+    root.traverse(obj => {
+        if (!obj.isMesh) return;
+
+        // HANYA collider yang memang obstacle
+        if (!obj.name.toLowerCase().includes("wall") &&
+            !obj.name.toLowerCase().includes("building") &&
+            !obj.name.toLowerCase().includes("pillar")) {
+            return;
+        }
+
+        const geom = obj.geometry;
+        geom.computeBoundingBox();
+
+        const box = geom.boundingBox.clone();
+        box.applyMatrix4(obj.matrixWorld);
+
+        colliders.push(box);
+
+    });
+}
+
+
+const prevCharacterPos = new THREE.Vector3();
+const characterBox = new THREE.Box3();
+const characterSize = new THREE.Vector3(0.8, 1.8, 0.8);
+
+function updateCharacterCollider() {
+    characterBox.setFromCenterAndSize(
+        characterModel.position.clone().add(new THREE.Vector3(0, 0.9, 0)),
+        characterSize
+    );
+}
+
+//Raycast Camera
+const cameraRay = new THREE.Raycaster();
+
+function resolveCameraCollision(target, desiredPos) {
+    const dir = desiredPos.clone().sub(target);
+    const dist = dir.length();
+
+    cameraRay.set(target, dir.normalize());
+    cameraRay.far = dist;
+
+    const hits = cameraRay.intersectObjects(scene.children, true);
+
+    if (hits.length > 0) {
+        camera.position.copy(
+            hits[0].point.addScaledVector(dir.normalize(), -0.3)
+        );
+    } else {
+        camera.position.copy(desiredPos);
+    }
+}
+
+
+
+
+//Ensuring all models are loaded before animation runs
+let assetsToLoad = 3; // Market + City + Character
+let assetsLoaded = 0;
+let sceneReady = false;
+
+function startScene() {
+    sceneReady = true;
+
+    // Reset clocks
+    clock.start();
+    cameraClock.start();
+
+    startTime = clock.getElapsedTime();
+
+    // Reset camera cutscene
+    isCameraCutscene = true;
+    cameraShotIndex = 0;
+    cameraShotStartTime = cameraClock.getElapsedTime();
+
+    // Start animation loop (SATU KALI SAJA)
+    animate();
+}
+
+function onAssetLoaded() {
+    assetsLoaded++;
+    if (assetsLoaded === assetsToLoad) {
+        startScene();
+    }
+}
+
 
 const market_loader = new GLTFLoader().setPath( 'Market/' );
     market_loader.load( 'scene.gltf', function ( gltf ) {
@@ -127,7 +219,10 @@ const market_loader = new GLTFLoader().setPath( 'Market/' );
         scene.add( market );
         market.scale.set(5,5,3); //X Y Z
         market.position.set(-130,-9,-65)
-        animate();
+
+        market.updateMatrixWorld(true); 
+        collectColliders(market);
+        onAssetLoaded();
 
     });
 
@@ -165,7 +260,10 @@ const city_loader = new GLTFLoader().setPath( 'City/' );
 
         scene.add( city );
         city.scale.set(10,10,10); //X Y Z
-        animate();
+
+        city.updateMatrixWorld(true);
+        collectColliders(city);
+        onAssetLoaded();
 
     });
 
@@ -176,11 +274,14 @@ let currentPhase = "walk1"; // Phases: walk1, turning, walk2, idle
 let walkDistance = 0;
 const phase1Target = 110;
 const phase2Target = 30;
-const walkSpeed = 5;
+const walkSpeed = 6.15
 
 const loader = new FBXLoader();
 loader.setPath("Jinhsi/");
 loader.load("Walking.fbx", (fbx) => {
+
+    startTime = clock.getElapsedTime();
+    currentPhase = "walk1";
     fbx.scale.setScalar(0.02);
     fbx.position.set(-20,-10,0);
     fbx.rotation.y = Math.PI  + (Math.PI / 2);
@@ -210,6 +311,14 @@ loader.load("Walking.fbx", (fbx) => {
 
     mixer = new THREE.AnimationMixer(fbx);
     characterModel = fbx;
+    onAssetLoaded();
+
+    //Ensuring the cinematic starts after the character loaded
+    controls.enabled = false;
+    isCameraCutscene = true;
+    cameraShotIndex = 0;
+    cameraShotStartTime = cameraClock.getElapsedTime();
+
 
     if (fbx.animations.length > 0) {
         const walkAction = mixer.clipAction(fbx.animations[0]);
@@ -222,66 +331,343 @@ loader.load("Walking.fbx", (fbx) => {
     isWalkingForward = true;
     loadAnim("turnRight", "Right Turn.fbx");
     loadAnim("walk", "Walking.fbx");
+    loadAnim("sit", "Sitting.fbx");
 });
 
+let startTime = 0;
+let elapsedTime = 0;
+
+const timeline = {
+    walk1: 18,   // detik
+    turn: 1.2,
+    walk2: 6,
+    sit: 4,
+    walk3: 6
+
+};
+
+//Camera scenes configuration
+let isCameraCutscene = true;
+let cameraShotIndex = 0;
+let cameraShotStartTime = 0;
+
+const cameraClock = new THREE.Clock();
+
+const staticLookTarget = new THREE.Vector3();
+
+function getCharacterForward() {
+    return new THREE.Vector3(0, 0, 1)
+        .applyQuaternion(characterModel.quaternion)
+        .normalize();
+}
+
+const cameraTimeline = [
+
+    // 1️⃣ BEHIND → MOVE FORWARD
+    {
+        duration: 8,
+
+        start: () => {
+            const forward = getCharacterForward();
+
+            const pos = characterModel.position.clone()
+                .add(forward.clone().multiplyScalar(-14)) // ⬅ BELAKANG
+                .add(new THREE.Vector3(0, 5, 0));
+
+            snapCamera(
+                pos,
+                characterModel.position.clone().add(new THREE.Vector3(0, 4, 0))
+            );
+        },
+
+        update: () => {
+            const forward = getCharacterForward();
+
+            const desiredPos = characterModel.position.clone()
+                .add(forward.clone().multiplyScalar(-14))
+                .add(new THREE.Vector3(0, 5, 0));
+
+            camera.position.lerp(desiredPos, 0.08);
+
+            camera.lookAt(
+                characterModel.position.clone().add(new THREE.Vector3(0, 4, 0))
+            );
+        }
+    },
+
+    // 2️⃣ FRONT → MOVE BACKWARD
+    {
+        duration: 8,
+
+        start: () => {
+            const forward = getCharacterForward();
+
+            const pos = characterModel.position.clone()
+                .add(forward.clone().multiplyScalar(10)) // ⬅ DEPAN
+                .add(new THREE.Vector3(0, 5, 0));
+
+            snapCamera(
+                pos,
+                characterModel.position.clone().add(new THREE.Vector3(0, 4, 0))
+            );
+        },
+
+        update: () => {
+            const forward = getCharacterForward();
+
+            const desiredPos = characterModel.position.clone()
+                .add(forward.clone().multiplyScalar(10))
+                .add(new THREE.Vector3(0, 5, 0));
+
+            camera.position.lerp(desiredPos, 0.08);
+
+            camera.lookAt(
+                characterModel.position.clone().add(new THREE.Vector3(0, 4, 0))
+            );
+        }
+    },
+
+
+    // 3️⃣ SIDE STATIC
+    {
+        duration: 3.0,
+        start: () => {
+            camera.position.set(-140, 6, 15);
+            staticLookTarget.set(-130, 4, 0);
+            camera.lookAt(staticLookTarget);
+        },
+        update: () => {
+            camera.lookAt(staticLookTarget);
+        }
+    },
+
+
+
+    // 4️⃣ FAST CINEMATIC APPROACH → FP (HIGHER CAMERA, STRAIGHT LOOK)
+    {
+        duration: 7,
+
+        start: () => {
+            camera.userData.startPos = camera.position.clone();
+        },
+
+        update: () => {
+            const rawT = Math.min(
+                (cameraClock.getElapsedTime() - cameraShotStartTime) / 6.0,
+                1
+            );
+
+            const t = Math.min(rawT * 1.5, 1);
+            const ease = t * t * (3 - 2 * t);
+
+            // Kepala karakter
+            const head = characterModel.position.clone()
+                .add(new THREE.Vector3(0, 6, 0));
+
+            // Arah wajah
+            const forward = new THREE.Vector3(0, 0, 1)
+                .applyQuaternion(characterModel.quaternion)
+                .normalize();
+
+            // 📌 POSISI FP (LEBIH TINGGI)
+            const fpTarget = head.clone()
+                .add(forward.multiplyScalar(0.8))
+                .add(new THREE.Vector3(0, 0.4, 0)); // ⬆ naik dikit
+
+            camera.position.copy(
+                camera.userData.startPos.clone().lerp(fpTarget, ease)
+            );
+
+            // 🎯 LOOK TETAP LURUS (TIDAK KE ATAS)
+            camera.lookAt(
+                head.clone().add(forward.multiplyScalar(10))
+            );
+        }
+    },
+
+    // 5️⃣ SUBTLE LOOK UP (CINEMATIC HEAD TILT)
+    {
+        duration: 5,
+
+        start: () => {
+            camera.userData.lookStartTime = cameraClock.getElapsedTime();
+        },
+
+        update: () => {
+            const t = Math.min(
+                (cameraClock.getElapsedTime() - camera.userData.lookStartTime) / 3.5,
+                1
+            );
+
+            const ease = t * t * (3 - 2 * t);
+
+            const head = characterModel.position.clone()
+                .add(new THREE.Vector3(0, 6, 0));
+
+            const forward = new THREE.Vector3(0, 0, 1)
+                .applyQuaternion(characterModel.quaternion)
+                .normalize();
+
+            const baseLook = head.clone().add(forward.multiplyScalar(10));
+            const lookUp = baseLook.clone().add(new THREE.Vector3(0, 2.0, 0));
+
+            camera.lookAt(
+                baseLook.clone().lerp(lookUp, ease)
+            );
+        }
+    },
+
+    // 6️⃣ SIDE STATIC FINAL
+    {
+        duration: 4.0,
+        start: () => {
+            camera.position.set(-140, 4, -40);
+            staticLookTarget.set(-130, 2, -40);
+            camera.lookAt(staticLookTarget);
+        },
+        update: () => {
+            camera.lookAt(staticLookTarget);
+        }
+    }
+];
+
+function snapCamera(position, lookTarget) {
+    camera.position.copy(position);
+    camera.lookAt(lookTarget);
+}
+
+
+function updateCameraCutscene(delta) {
+    const shot = cameraTimeline[cameraShotIndex];
+    if (!shot) {
+        endCameraCutscene();
+        return;
+    }
+
+    if (!shot._started) {
+        shot._started = true;
+        if (shot.start) shot.start();
+    }
+
+    shot.update?.(delta);
+
+    if (cameraClock.getElapsedTime() - cameraShotStartTime >= shot.duration) {
+        cameraShotIndex++;
+        cameraShotStartTime = cameraClock.getElapsedTime();
+    }
+}
+
+
+function endCameraCutscene() {
+    isCameraCutscene = false;
+    controls.enabled = true;
+}
+
+function switchToSit() {
+    currentPhase = "sit";
+
+    const prev = currentAction;
+    currentAction = actions["sit"];
+
+    prev.fadeOut(0.4);
+    currentAction.reset().fadeIn(0.4).play();
+
+    currentAction.setLoop(THREE.LoopOnce);
+    currentAction.clampWhenFinished = true;
+
+    mixer.addEventListener("finished", onSitFinished);
+}
+
+function onSitFinished(e) {
+    if (e.action === actions["sit"]) {
+        currentPhase = "walk3";
+
+        currentAction.fadeOut(0.3);
+        currentAction = actions["walk"];
+        currentAction.reset().fadeIn(0.3).play();
+
+        mixer.removeEventListener("finished", onSitFinished);
+    }
+}
+
+
 function animate() {
+    if (!sceneReady) return;
+
     const delta = clock.getDelta();
+    elapsedTime = clock.getElapsedTime() - startTime;
+
     if (mixer) mixer.update(delta);
 
     if (characterModel) {
-        const moveStep = walkSpeed * delta;
 
-        // PHASE 1: INITIAL WALK (Z-AXIS)
+        // 1️⃣ SIMPAN POSISI SEBELUM GERAK
+        prevCharacterPos.copy(characterModel.position);
+
+        // ================= PHASE 1 =================
         if (currentPhase === "walk1") {
-            characterModel.position.x -= moveStep;
-            walkDistance += moveStep;
+            characterModel.position.x -= walkSpeed * delta;
 
-            if (walkDistance >= phase1Target) {
-                currentPhase = "turning";
-                if (actions["turnRight"]) {
-                    const prevAction = currentAction;
-                    currentAction = actions["turnRight"];
-                    prevAction.fadeOut(0.5);
-                    currentAction.reset().fadeIn(0.5).play();
-
-                    // When turn ends, start Walk 2
-                    mixer.addEventListener('finished', function onTurnEnd(e) {
-                        if (e.action === actions["turnRight"]) {
-                            characterModel.rotation.y -= Math.PI / 2; // Physical turn
-                            walkDistance = 0; // Reset distance for second walk
-                            currentPhase = "walk2";
-                            
-                            // Switch back to walk animation
-                            currentAction.fadeOut(0.5);
-                            currentAction = actions["walk"];
-                            currentAction.reset().fadeIn(0.5).play();
-                            
-                            mixer.removeEventListener('finished', onTurnEnd); //Can add another animation if needed
-                        }
-                    });
-                }
+            if (elapsedTime >= timeline.walk1) {
+                switchToTurn();
             }
         }
 
-        // PHASE 2: SECOND WALK (X-AXIS)
-        // Note: After a 90-deg left turn from -Z, the character moves toward -X
+        // ================= PHASE 2 =================
+        else if (currentPhase === "turning") {
+            // hanya animasi
+        }
+
+        // ================= PHASE 3 =================
         else if (currentPhase === "walk2") {
-            characterModel.position.z -= moveStep; 
-            walkDistance += moveStep;
+            characterModel.position.z -= walkSpeed * delta;
 
-            if (walkDistance >= phase2Target) {
-                currentPhase = "idle";
-                currentAction.fadeOut(0.5); // Stop walking animation
-                // if you have an idle animation, play it here
+            if (elapsedTime >= timeline.walk1 + timeline.turn + timeline.walk2) {
+                // currentPhase = "idle";
+                switchToSit();
             }
         }
+
+        else if (currentPhase === "walk3") {
+            characterModel.position.z -= walkSpeed * delta;
+        }
+
+
+        // 2️⃣ UPDATE COLLIDER SETELAH GERAK
+        updateCharacterCollider();
+
+        const desiredPos = characterModel.position.clone();
+
+        for (const box of colliders) {
+            if (characterBox.intersectsBox(box)) {
+
+                // rollback X
+                characterModel.position.x = prevCharacterPos.x;
+                updateCharacterCollider();
+
+                if (!characterBox.intersectsBox(box)) break;
+
+                // rollback Z
+                characterModel.position.z = prevCharacterPos.z;
+                updateCharacterCollider();
+
+                break;
+            }
+        }
+
     }
 
-    updateCameraMovement();
-    
-    renderer.render(scene, camera)
+    // CAMERA
+    if (isCameraCutscene && characterModel) {
+        updateCameraCutscene(delta);
+    } else {
+        updateCameraMovement();
+    }
+
+    renderer.render(scene, camera);
     requestAnimationFrame(animate);
 }
+
 requestAnimationFrame(animate);
 
 function loadAnim(name, file) {
@@ -298,6 +684,32 @@ function loadAnim(name, file) {
         }
     });
 }
+function switchToTurn() {
+    currentPhase = "turning";
+
+    const prev = currentAction;
+    currentAction = actions["turnRight"];
+
+    prev.fadeOut(0.4);
+    currentAction.reset().fadeIn(0.4).play();
+
+    mixer.addEventListener("finished", onTurnFinished);
+}
+
+function onTurnFinished(e) {
+    if (e.action === actions["turnRight"]) {
+        characterModel.rotation.y -= Math.PI / 2;
+
+        currentPhase = "walk2";
+
+        currentAction.fadeOut(0.3);
+        currentAction = actions["walk"];
+        currentAction.reset().fadeIn(0.3).play();
+
+        mixer.removeEventListener("finished", onTurnFinished);
+    }
+}
+
 
 const movement = {
         forward: false,
@@ -305,7 +717,7 @@ const movement = {
         left: false,
         right: false,
     };
-const moveSpeed = 0.8;      // camera move speed
+const moveSpeed = 0.4;      // camera move speed
 
     window.addEventListener("keydown", (e) => {
         switch (e.code) {
@@ -327,6 +739,7 @@ const moveSpeed = 0.8;      // camera move speed
 
 function updateCameraMovement() {
     const direction = new THREE.Vector3();
+     if (isCameraCutscene) return;
 
     // WASD movement (world-relative)
     if (movement.forward) {

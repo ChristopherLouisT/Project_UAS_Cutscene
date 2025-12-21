@@ -198,7 +198,7 @@ function updateCameraMovement() {
 }
 
 function animate() {
-    stats.begin()
+    // stats.begin()
     const delta = clock.getDelta();
     if (mixer) mixer.update(delta);
 
