@@ -105,7 +105,7 @@ ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 
 // Set position to match your character's feet
-ground.position.y = 5; 
+ground.position.y = 10; 
 
 scene.add(ground);
 
