@@ -87,11 +87,37 @@ scene.add(sunLight.target)
 var sunLightHelper = new THREE.DirectionalLightHelper(sunLight)
 scene.add(sunLightHelper)
 
+// --- GROUND SETTINGS ---
+const groundSize = 2000;
+const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
+const groundMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0xFFFDD0, // Darker gray so shadows pop
+    roughness: 0.8, 
+    metalness: 0.2 
+});
+
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+
+// Planes are vertical by default, rotate to make it horizontal
+ground.rotation.x = -Math.PI / 2; 
+
+// This is crucial for your shadows to appear!
+ground.receiveShadow = true;
+
+// Set position to match your character's feet
+ground.position.y = 5; 
+
+scene.add(ground);
+
+// OPTIONAL: Add a Grid Helper to see the floor clearly
+// const grid = new THREE.GridHelper(groundSize, 100, 0x000000, 0x000000);
+// grid.position.y = 0.21; // Slightly above ground to avoid "z-fighting" flickering
+// grid.material.opacity = 0.2;
+// grid.material.transparent = true;
+// scene.add(grid);
 
 let mixer; // to control animations
 const clock = new THREE.Clock();
-
-
 
 let actions = {};
 let currentAction;
