@@ -42,7 +42,38 @@ intensity = 0.6;
 light = new THREE.HemisphereLight(groundColor, skyColor, intensity);
 scene.add(light);
 
-// Spot Light (keempat)
+// var directionalLightHelper = new THREE.HemisphereLightHelper(light);
+// scene.add(directionalLightHelper);
+
+
+// const sunLight = new THREE.DirectionalLight(0xffe9c0, 2.5);
+// sunLight.position.set(150, 140, 80);
+// sunLight.target.position.set(-90,-80,-15)
+// sunLight.castShadow = true;
+// sunLight.shadow.camera.near = 1;
+// sunLight.shadow.camera.far = 1000;
+// sunLight.shadow.camera.left = -300;
+// sunLight.shadow.camera.right = 300;
+// sunLight.shadow.camera.top = 300;
+// sunLight.shadow.camera.bottom = -300;
+// sunLight.shadow.bias = -0.09; //Buat shadownya ga terlalu kuat
+// scene.add(new THREE.CameraHelper(sunLight.shadow.camera)) 
+// scene.add(sunLight);
+// scene.add(sunLight.target)
+// var sunLightHelper = new THREE.DirectionalLightHelper(sunLight)
+// scene.add(sunLightHelper)
+
+// Debug Shadow tool
+// const floor = new THREE.Mesh(
+//   new THREE.PlaneGeometry(300, 300),
+//   new THREE.MeshStandardMaterial({ color: 0xFFFFFF })
+// );
+// floor.rotation.x = -Math.PI / 2;
+// floor.position.y = 0.1;
+// floor.receiveShadow = true;
+// scene.add(floor);
+
+// Spot Light
 color = 0xFFFFFF;
 intensity = 300;
 const spotLight1 = new THREE.SpotLight(0xffffff, 300, 300, Math.PI / 3);
@@ -88,6 +119,7 @@ scene.add(spotLight3.target);
 const shadowHelper3 = new THREE.CameraHelper(spotLight3.shadow.camera);
 scene.add(shadowHelper3);
 
+
 const spotLight4 = new THREE.SpotLight(0xffffff, 300, 300, Math.PI / 8);
 spotLight4.penumbra = 0.5;
 spotLight4.position.set(0, 26, 15);
@@ -107,47 +139,50 @@ let mixer; // to control animations
 const clock = new THREE.Clock();
 
 const market_loader = new GLTFLoader().setPath( 'Market/' );
-market_loader.load( 'scene.gltf', function ( gltf ) {
+    market_loader.load( 'scene.gltf', function ( gltf ) {
 
-    const market = gltf.scene
+        const market = gltf.scene
 
-    market.traverse((node) => {
-        if (node.isMesh) {
-            const oldMat = node.material;
-            
-            // Replace MeshBasicMaterial with light-reactive material
-            if (oldMat && oldMat.type === 'MeshBasicMaterial') {
-                const newMat = new THREE.MeshStandardMaterial({
-                    map: oldMat.map || null,
-                    normalMap: oldMat.normalMap || null,
-                    roughness: 0.8,
-                    metalness: 0.1,
-                    emissiveMap: oldMat.emissiveMap || null,
-                    emissive: oldMat.emissive || new THREE.Color(0x000000),
-                });
-                newMat.needsUpdate = true;
-                node.material = newMat;
+        market.traverse((node) => {
+            if (node.isMesh) {
+                const oldMat = node.material;
+                
+                // Replace MeshBasicMaterial with light-reactive material
+                if (oldMat && oldMat.type === 'MeshBasicMaterial') {
+                    const newMat = new THREE.MeshStandardMaterial({
+                        map: oldMat.map || null,
+                        normalMap: oldMat.normalMap || null,
+                        roughness: 0.8,
+                        metalness: 0.1,
+                        emissiveMap: oldMat.emissiveMap || null,
+                        emissive: oldMat.emissive || new THREE.Color(0x000000),
+                    });
+                    newMat.needsUpdate = true;
+                    node.material = newMat;
+                }
+
+                node.castShadow = true;
+                node.receiveShadow = true;
             }
 
-            node.castShadow = true;
-            node.receiveShadow = true;
-        }
+            if (node.isLight) node.parent.remove(node);
+        });
 
-        if (node.isLight) node.parent.remove(node);
+        scene.add( market );
+        market.scale.set(10,10,10); //X Y Z
+        animate();
+
     });
-
-    scene.add( market );
-    market.scale.set(10,10,10); //X Y Z
-    animate();
-
-});
-
 
 let actions = {}, currentAction;
 let characterModel;
 let isWalkingForward;
+let currentPhase = "walk1"; // Phases: walk1, turning, walk2, idle
+let walkDistance = 0;
+const phase1Target = 40;
+const phase2Target = 30;
+const walkSpeed = 4;
 
-const walkSpeed = 10; // movement speed (units per second)
 const loader = new FBXLoader();
 loader.setPath("Jinhsi/");
 
@@ -188,58 +223,56 @@ loader.load("Walking.fbx", (fbx) => {
         currentAction = walkAction; // Set this so the 'turn' logic can fade it out
         walkAction.play();         // Start the bones moving!
     }
+    // ----------------------------------------
 
-    // load extra animations (turnLeft, walk duplicate, think)
+    isWalkingForward = true;
     loadAnim("turnLeft", "Left Turn 90.fbx");
     loadAnim("walk", "Walking.fbx");
-    loadAnim("think", "Think.fbx"); // <-- IMPORTANT: put Think.fbx inside Jinhsi/
-    
 });
     
 const movement = {
-    forward: false,
-    backward: false,
-    left: false,
-    right: false,
-};
+        forward: false,
+        backward: false,
+        left: false,
+        right: false,
+    };
 
 const moveSpeed = 0.2;      // camera move speed
 
-window.addEventListener("keydown", (e) => {
-    switch (e.code) {
-        case "KeyW": movement.forward = true; break;
-        case "KeyS": movement.backward = true; break;
-        case "KeyA": movement.left = true; break;
-        case "KeyD": movement.right = true; break;
-    }
-});
+    window.addEventListener("keydown", (e) => {
+        switch (e.code) {
+            case "KeyW": movement.forward = true; break;
+            case "KeyS": movement.backward = true; break;
+            case "KeyA": movement.left = true; break;
+            case "KeyD": movement.right = true; break;
+        }
+    });
 
-window.addEventListener("keyup", (e) => {
-    switch (e.code) {
-        case "KeyW": movement.forward = false; break;
-        case "KeyS": movement.backward = false; break;
-        case "KeyA": movement.left = false; break;
-        case "KeyD": movement.right = false; break;
-    }
-});
+    window.addEventListener("keyup", (e) => {
+        switch (e.code) {
+            case "KeyW": movement.forward = false; break;
+            case "KeyS": movement.backward = false; break;
+            case "KeyA": movement.left = false; break;
+            case "KeyD": movement.right = false; break;
+        }
+    });
 
 function loadAnim(name, file) {
     const animLoader = new FBXLoader();
     animLoader.setPath("Jinhsi/");
     animLoader.load(file, (anim) => {
-        if (!mixer) return; // safety
         const action = mixer.clipAction(anim.animations[0]);
         actions[name] = action;
         
-        // Special rules
-        if (name === "turnLeft" || name === "think") {
+        // Turn animations usually only play once
+        if (name === "turnLeft") {
             action.setLoop(THREE.LoopOnce);
-            action.clampWhenFinished = true;
+            action.clampWhenFinished = true; // Stay at the end frame
         }
     });
 }
 
-// Function to apply movement every frame (camera WASD movement)
+// Function to apply movement every frame
 function updateCameraMovement() {
     const direction = new THREE.Vector3();
 
@@ -269,222 +302,103 @@ function updateCameraMovement() {
     controls.update();
 }
 
+function updateCharacterMove(delta) {
+    if (!character) return;
 
-// =======================
-// WAYPOINT WALK SYSTEM
-// =======================
+    // 1. LOGIKA SAAT STAND UP (Putar badan ke arah tujuan pertama)
+    //    Ini membuat karakter berputar ditempat saat berdiri agar siap berjalan
+    if (actions["standup"] && currentAction === actions["standup"]) {
+        const target = waypoints[0];
+        
+        // Gunakan dummy object untuk mencontek rotasi yang seharusnya
+        dummyTarget.position.copy(character.position);
+        dummyTarget.lookAt(target); 
+        
+        // Putar karakter secara halus (Slerp) menuju rotasi dummy
+        // Angka 3.0 adalah kecepatan putar (semakin besar semakin cepat)
+        character.quaternion.slerp(dummyTarget.quaternion, 3.0 * delta);
+    }
 
-// Waypoints arranged to follow the U-shaped route in your sketch.
-// Tweak coordinates if needed to match your scene scale/visual.
-const waypoints = [
-    { position: new THREE.Vector3(0, 0, -20), stop: false },    // Start
-    { position: new THREE.Vector3(-18, 0, -20), stop: false },
-    { position: new THREE.Vector3(-18, 0, 20), stop: false },
-    { position: new THREE.Vector3(18, 0, 20), stop: false },
-    { position: new THREE.Vector3(18, 0, 10), stop: false },
-    { position: new THREE.Vector3(18, 0, -20), stop: false },
-    { position: new THREE.Vector3(18, 0, -10), stop: true,  wait: 4 },
+    // 2. LOGIKA SAAT WALK (Jalan + Putar mengikuti jalur)
+    if (actions["walk"] && currentAction === actions["walk"]) {
+        if (waypointIndex < waypoints.length) {
+            const target = waypoints[waypointIndex];
+            const distance = character.position.distanceTo(target);
 
-    { position: new THREE.Vector3(16, 0, 10), stop: false },
-    { position: new THREE.Vector3(20, 0, 10), stop: true,  wait: 999 }, //End
-//  { position: new THREE.Vector3(x, x, x), stop: true,  wait: 2(second) }
-];
-
-let waypointIndex = 0;
-let state = "walk"; // "walk" or "think"
-let waitTimer = 0;
-
-const dummyTarget = new THREE.Object3D(); // helper to compute target rotation
-
-// safety: if Think.fbx not loaded yet, we'll still wait the time but skip playing anim
-function playThinkAnimation() {
-    if (actions["think"]) {
-        if (currentAction) currentAction.fadeOut(0.3);
-        currentAction = actions["think"];
-        currentAction.reset().fadeIn(0.3).play();
+            // Jika jarak sudah dekat (< 0.5), pindah ke tujuan berikutnya
+            if (distance < 0.5) {
+                waypointIndex++;
+            } else {
+                // Hitung arah
+                const direction = new THREE.Vector3().subVectors(target, character.position).normalize();
+                
+                // Pindahkan posisi
+                character.position.add(direction.multiplyScalar(charSpeed * delta));
+                
+                // Rotasi badan menghadap tujuan (Smooth turn saat jalan)
+                dummyTarget.position.copy(character.position);
+                dummyTarget.lookAt(target);
+                character.quaternion.slerp(dummyTarget.quaternion, 10.0 * delta); // Rotasi cepat saat jalan
+            }
+        } 
     }
 }
 
-// =======================
-// ANIMATE LOOP
-// =======================
 function animate() {
     const delta = clock.getDelta();
     if (mixer) mixer.update(delta);
     updateCameraMovement();
 
-    // Waypoint movement logic
-    if (characterModel && currentAction) {
+    if (characterModel) {
+        const moveStep = walkSpeed * delta;
 
-        if (state === "walk") {
-            const target = waypoints[Math.min(waypointIndex, waypoints.length - 1)].position;
-            const direction = new THREE.Vector3().subVectors(target, characterModel.position);
-            const distance = direction.length();
+        // PHASE 1: INITIAL WALK (Z-AXIS)
+        if (currentPhase === "walk1") {
+            characterModel.position.z -= moveStep;
+            walkDistance += moveStep;
 
-            if (distance < 0.3) {
-                // Arrived at waypoint
-                if (waypoints[waypointIndex].stop) {
-                    // go to THINK state
-                    state = "think";
-                    waitTimer = waypoints[waypointIndex].wait || 2;
+            if (walkDistance >= phase1Target) {
+                currentPhase = "turning";
+                if (actions["turnLeft"]) {
+                    const prevAction = currentAction;
+                    currentAction = actions["turnLeft"];
+                    prevAction.fadeOut(0.5);
+                    currentAction.reset().fadeIn(0.5).play();
 
-                    // Play think animation if exists
-                    playThinkAnimation();
-                } else {
-                    // move to next waypoint immediately
-                    waypointIndex++;
-                    // If reached final waypoint beyond array, clamp
-                    if (waypointIndex >= waypoints.length) {
-                        waypointIndex = waypoints.length - 1;
-                    }
+                    // When turn ends, start Walk 2
+                    mixer.addEventListener('finished', function onTurnEnd(e) {
+                        if (e.action === actions["turnLeft"]) {
+                            characterModel.rotation.y += Math.PI / 2; // Physical turn
+                            walkDistance = 0; // Reset distance for second walk
+                            currentPhase = "walk2";
+                            
+                            // Switch back to walk animation
+                            currentAction.fadeOut(0.5);
+                            currentAction = actions["walk"];
+                            currentAction.reset().fadeIn(0.5).play();
+                            
+                            mixer.removeEventListener('finished', onTurnEnd); //Can add another animation if needed
+                        }
+                    });
                 }
-            } else {
-                // Move towards the target
-                direction.normalize();
-                characterModel.position.addScaledVector(direction, walkSpeed * delta);
-
-                // Smooth rotation to face the target
-                dummyTarget.position.copy(characterModel.position);
-                dummyTarget.lookAt(target);
-                characterModel.quaternion.slerp(dummyTarget.quaternion, 8 * delta);
             }
         }
 
-        else if (state === "think") {
-            waitTimer -= delta;
+        // PHASE 2: SECOND WALK (X-AXIS)
+        // Note: After a 90-deg left turn from -Z, the character moves toward -X
+        else if (currentPhase === "walk2") {
+            characterModel.position.x -= moveStep; 
+            walkDistance += moveStep;
 
-            // ensure the character is stationary while thinking (no residual motion)
-            // (If you want the bones to keep playing while think anim is on, mixers handle it)
-            
-            if (waitTimer <= 0) {
-                // done thinking -> next waypoint
-                waypointIndex++;
-                if (waypointIndex >= waypoints.length) waypointIndex = waypoints.length - 1;
-
-                // switch back to walk animation if available
-                if (actions["walk"]) {
-                    if (currentAction) currentAction.fadeOut(0.3);
-                    currentAction = actions["walk"];
-                    currentAction.reset().fadeIn(0.3).play();
-                }
-                state = "walk";
+            if (walkDistance >= phase2Target) {
+                currentPhase = "idle";
+                currentAction.fadeOut(0.5); // Stop walking animation
+                // if you have an idle animation, play it here
             }
         }
-
     }
 
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
-
-    // =======================
-    // CINEMATIC PRODUCT CAMERA (ADD-ON ONLY)
-    // =======================
-
-    // Kamera mode: "normal" | "product"
-    let cameraMode = "normal";
-    let cameraTimer = 0;
-
-    // Offset kamera default (bukan full follow)
-    const camOffset = new THREE.Vector3(6, 12, -6);
-
-    // Area produk yang akan ditampilkan
-    const productCameraZones = [
-        {
-            center: new THREE.Vector3(-18,   4,    10),
-            camPos: new THREE.Vector3(-20,   16,   -20),
-            lookAt: new THREE.Vector3(0,   10,    0),
-            radius: 5,
-            duration: 2.5
-        },
-        {
-            center: new THREE.Vector3(18,    4,   -10),
-            camPos: new THREE.Vector3(28,    12,  -10),
-            lookAt: new THREE.Vector3(18,    8,   -10),
-            radius: 5,
-            duration: 2.5
-        }
-    ];
-
-    // Inject camera logic WITHOUT touching animate()
-    const _originalAnimate = animate;
-    animate = function () {
-
-        const delta = clock.getDelta();
-        if (mixer) mixer.update(delta);
-        updateCameraMovement();
-
-        // ===== CAMERA WORK ADDITION =====
-        if (characterModel) {
-
-            if (cameraMode === "normal") {
-
-                // Semi-follow (tidak nempel karakter)
-                const desiredPos = characterModel.position.clone().add(camOffset);
-                camera.position.lerp(desiredPos, 0.02);
-                camera.lookAt(characterModel.position.x, characterModel.position.y + 3, characterModel.position.z);
-
-                // Cek apakah masuk zona produk
-                for (const zone of productCameraZones) {
-                    if (characterModel.position.distanceTo(zone.center) < zone.radius) {
-                        cameraMode = "product";
-                        cameraTimer = zone.duration;
-                        camera.position.lerp(zone.camPos, 0.3);
-                        camera.lookAt(zone.lookAt);
-                        break;
-                    }
-                }
-            }
-
-            else if (cameraMode === "product") {
-                cameraTimer -= delta;
-                if (cameraTimer <= 0) {
-                    cameraMode = "normal";
-                }
-            }
-        }
-
-        // ===== ORIGINAL LOGIC =====
-        if (characterModel && currentAction) {
-
-            if (state === "walk") {
-                const target = waypoints[Math.min(waypointIndex, waypoints.length - 1)].position;
-                const direction = new THREE.Vector3().subVectors(target, characterModel.position);
-                const distance = direction.length();
-
-                if (distance < 0.3) {
-                    if (waypoints[waypointIndex].stop) {
-                        state = "think";
-                        waitTimer = waypoints[waypointIndex].wait || 2;
-                        playThinkAnimation();
-                    } else {
-                        waypointIndex = Math.min(waypointIndex + 1, waypoints.length - 1);
-                    }
-                } else {
-                    direction.normalize();
-                    characterModel.position.addScaledVector(direction, walkSpeed * delta);
-                    dummyTarget.position.copy(characterModel.position);
-                    dummyTarget.lookAt(target);
-                    characterModel.quaternion.slerp(dummyTarget.quaternion, 8 * delta);
-                }
-            }
-
-            else if (state === "think") {
-                waitTimer -= delta;
-                if (waitTimer <= 0) {
-                    waypointIndex = Math.min(waypointIndex + 1, waypoints.length - 1);
-                    if (actions["walk"]) {
-                        currentAction.fadeOut(0.3);
-                        currentAction = actions["walk"];
-                        currentAction.reset().fadeIn(0.3).play();
-                    }
-                    state = "walk";
-                }
-            }
-        }
-
-        renderer.render(scene, camera);
-        requestAnimationFrame(animate);
-    };
-
 }
 requestAnimationFrame(animate);
