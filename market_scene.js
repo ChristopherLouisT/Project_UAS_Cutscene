@@ -22,6 +22,7 @@ const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerH
 camera.position.set(0, 0, 50);
 camera.lookAt(0, 0, 0);
 
+
 //setup orbit control
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 5, 0);
@@ -29,75 +30,120 @@ controls.update();
 
 // Ambient Light
 var color = 0xFFFFFF;
-var intensity = 0.3;
+var intensity = 0.15;
 var light = new THREE.AmbientLight(color, intensity);
 scene.add(light);
 
 
-const sunLight = new THREE.DirectionalLight(0xffe9c0, 2.5);
-sunLight.position.set(150, 140, 80);
-sunLight.target.position.set(-90,-80,-15)
-sunLight.castShadow = true;
-sunLight.shadow.camera.near = 1;
-sunLight.shadow.camera.far = 1000;
-sunLight.shadow.camera.left = -300;
-sunLight.shadow.camera.right = 300;
-sunLight.shadow.camera.top = 300;
-sunLight.shadow.camera.bottom = -300;
-sunLight.shadow.bias = -0.09; //Buat shadownya ga terlalu kuat
-scene.add(new THREE.CameraHelper(sunLight.shadow.camera)) 
-scene.add(sunLight);
-scene.add(sunLight.target)
-var sunLightHelper = new THREE.DirectionalLightHelper(sunLight)
-scene.add(sunLightHelper)
+// Hemisphere Light
+var skyColor = 0xFFFFFF;  // light blue
+var groundColor = 0xB97A20;  // brownish orange
+intensity = 0.6;
+light = new THREE.HemisphereLight(groundColor, skyColor, intensity);
+scene.add(light);
+
+// var directionalLightHelper = new THREE.HemisphereLightHelper(light);
+// scene.add(directionalLightHelper);
+
+
+// const sunLight = new THREE.DirectionalLight(0xffe9c0, 2.5);
+// sunLight.position.set(150, 140, 80);
+// sunLight.target.position.set(-90,-80,-15)
+// sunLight.castShadow = true;
+// sunLight.shadow.camera.near = 1;
+// sunLight.shadow.camera.far = 1000;
+// sunLight.shadow.camera.left = -300;
+// sunLight.shadow.camera.right = 300;
+// sunLight.shadow.camera.top = 300;
+// sunLight.shadow.camera.bottom = -300;
+// sunLight.shadow.bias = -0.09; //Buat shadownya ga terlalu kuat
+// scene.add(new THREE.CameraHelper(sunLight.shadow.camera)) 
+// scene.add(sunLight);
+// scene.add(sunLight.target)
+// var sunLightHelper = new THREE.DirectionalLightHelper(sunLight)
+// scene.add(sunLightHelper)
 
 // Debug Shadow tool
 // const floor = new THREE.Mesh(
-//   new THREE.PlaneGeometry(500, 500),
-//   new THREE.MeshStandardMaterial({ color: 0x888888 })
+//   new THREE.PlaneGeometry(300, 300),
+//   new THREE.MeshStandardMaterial({ color: 0xFFFFFF })
 // );
 // floor.rotation.x = -Math.PI / 2;
-// floor.position.y = 0;
+// floor.position.y = 0.1;
 // floor.receiveShadow = true;
 // scene.add(floor);
 
 // Spot Light
-// color = 0xFF0000;
-// intensity = 30000;
-// var angle = THREE.MathUtils.degToRad(35);
-// light = new THREE.SpotLight(color, intensity, distance, angle);
-// light.position.set(-50, 10, 0);
-// light.target.position.set(10, 10, 0);
-// light.castShadow = true;
-// scene.add(new THREE.CameraHelper(light.shadow.camera)) 
-// scene.add(light);
-// scene.add(light.target);
+color = 0xFFFFFF;
+intensity = 300;
+const spotLight1 = new THREE.SpotLight(0xffffff, 300, 300, Math.PI / 3);
+spotLight1.penumbra = 0.5;
+spotLight1.position.set(-20, 26, 0);
+spotLight1.target.position.set(-20, 0, 0);
+spotLight1.shadow.camera.near = 0.5; 
+spotLight1.shadow.camera.far = 500;
+spotLight1.shadow.camera.fov = (spotLight1.angle * (180 / Math.PI)) * 1.5;
+spotLight1.shadow.bias = -0.0001;
+spotLight1.castShadow = true;
+scene.add(spotLight1);
+scene.add(spotLight1.target);
+spotLight1.target.updateMatrixWorld()
+const shadowHelper = new THREE.CameraHelper(spotLight1.shadow.camera);
+scene.add(shadowHelper);
 
-// var spotLightHelper = new THREE.SpotLightHelper(light);
-// scene.add(spotLightHelper);
+const spotLight2 = new THREE.SpotLight(0xffffff, 300, 300, Math.PI / 3);
+spotLight2.penumbra = 0.5;
+spotLight2.position.set(20, 26, 0);
+spotLight2.target.position.set(20, 0, 0);
+spotLight2.shadow.camera.near = 0.5; 
+spotLight2.shadow.camera.far = 500;
+spotLight2.shadow.camera.fov = (spotLight2.angle * (180 / Math.PI)) * 1.5;
+spotLight2.shadow.bias = -0.0001; 
+spotLight2.castShadow = true; 
+scene.add(spotLight2);
+scene.add(spotLight2.target);
+const shadowHelper2 = new THREE.CameraHelper(spotLight2.shadow.camera);
+scene.add(shadowHelper2);
+
+const spotLight3 = new THREE.SpotLight(0xffffff, 300, 300, Math.PI / 3);
+spotLight3.penumbra = 0.5;
+spotLight3.position.set(0, 26, -20);
+spotLight3.target.position.set(0, 0, -20);
+spotLight3.shadow.camera.near = 0.5; 
+spotLight3.shadow.camera.far = 500;
+spotLight3.shadow.camera.fov = (spotLight1.angle * (180 / Math.PI)) * 1.5;
+spotLight3.shadow.bias = -0.0001;
+spotLight3.castShadow = true;
+scene.add(spotLight3);
+scene.add(spotLight3.target);
+const shadowHelper3 = new THREE.CameraHelper(spotLight3.shadow.camera);
+scene.add(shadowHelper3);
+
+
+const spotLight4 = new THREE.SpotLight(0xffffff, 300, 300, Math.PI / 8);
+spotLight4.penumbra = 0.5;
+spotLight4.position.set(0, 26, 15);
+spotLight4.target.position.set(0, 0, 15);
+spotLight4.shadow.camera.near = 0.5; 
+spotLight4.shadow.camera.far = 500;
+spotLight4.shadow.camera.fov = (spotLight1.angle * (180 / Math.PI)) * 1.5;  
+spotLight4.shadow.bias = -0.0001;
+spotLight4.castShadow = true;
+scene.add(spotLight4);
+scene.add(spotLight4.target);
+const shadowHelper4 = new THREE.CameraHelper(spotLight4.shadow.camera);
+scene.add(shadowHelper4);
+
 
 let mixer; // to control animations
 const clock = new THREE.Clock();
 
-let character = null; 
-const charSpeed = 12; 
-let waypointIndex = 0;
+const market_loader = new GLTFLoader().setPath( 'Market/' );
+    market_loader.load( 'scene.gltf', function ( gltf ) {
 
-const waypoints = [
-    new THREE.Vector3(10, 0, 20), // 1. Kanan
-    new THREE.Vector3(10, 0, -120),  // 2. Maju
-    new THREE.Vector3(-150, -9, 135)   // 3. Kanan
-];
+        const market = gltf.scene
 
-const dummyTarget = new THREE.Object3D(); 
-
-
-const classroom_loader = new GLTFLoader().setPath( 'Market/' );
-    classroom_loader.load( 'scene.gltf', function ( gltf ) {
-
-        const classroom = gltf.scene
-
-        classroom.traverse((node) => {
+        market.traverse((node) => {
             if (node.isMesh) {
                 const oldMat = node.material;
                 
@@ -122,16 +168,20 @@ const classroom_loader = new GLTFLoader().setPath( 'Market/' );
             if (node.isLight) node.parent.remove(node);
         });
 
-        scene.add( classroom );
-        classroom.scale.set(10,10,10); //X Y Z
+        scene.add( market );
+        market.scale.set(10,10,10); //X Y Z
         animate();
 
     });
 
 let actions = {}, currentAction;
-let animationTimeline = [];
-let timelineClock = 0;
-let nextIndex = 0;
+let characterModel;
+let isWalkingForward;
+let currentPhase = "walk1"; // Phases: walk1, turning, walk2, idle
+let walkDistance = 0;
+const phase1Target = 40;
+const phase2Target = 30;
+const walkSpeed = 4;
 
 const loader = new FBXLoader();
 loader.setPath("Jinhsi/");
@@ -144,62 +194,41 @@ loader.load("Walking.fbx", (fbx) => {
     scene.add(fbx);
 
     fbx.traverse(obj => {
+
+        if (obj.isMesh || obj.isSkinnedMesh) {
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+
+            // Ensure material supports lighting
+            if (obj.material) {
+                obj.material.needsUpdate = true;
+            }
+        }
+
+        if (obj.material) {
+            obj.material.shadowSide = THREE.DoubleSide; // Helps with thin meshes
+        }
+
         if (obj.isLight) {
             obj.intensity = 0;
         }
     });
 
     mixer = new THREE.AnimationMixer(fbx);
+    characterModel = fbx; // To reference the fbx outside the loader
 
-    character = fbx; 
+    if (fbx.animations.length > 0) {
+        const walkAction = mixer.clipAction(fbx.animations[0]);
+        actions["walk"] = walkAction;
+        currentAction = walkAction; // Set this so the 'turn' logic can fade it out
+        walkAction.play();         // Start the bones moving!
+    }
+    // ----------------------------------------
 
-    const sit = mixer.clipAction(fbx.animations[0]);
-    actions["sit"] = sit;
-    currentAction = sit;
-    sit.play();
-
-    // Load animations after model is ready
+    isWalkingForward = true;
+    loadAnim("turnLeft", "Left Turn 90.fbx");
     loadAnim("walk", "Walking.fbx");
-
-    setupTimeline();
 });
-
-function playAction(name, fade = 0.5) { // Fade agak diperlambat biar smooth
-    const nextAction = actions[name];
-    if (!nextAction) {
-        console.warn(`Animation "${name}" not loaded yet`);
-        return;
-    }
-
-    if (currentAction !== nextAction) {
-        if (currentAction) {
-            currentAction.fadeOut(fade);
-        }
-        nextAction.reset().fadeIn(fade).play();
-        currentAction = nextAction;
-    }
-}
-
-function setupTimeline() {
-    animationTimeline = [
-        { time: 0, action: "sit" },
-        { time: 3, action: "standup" }, // Durasi standup biasanya 2-3 detik
-        { time: 5, action: "walk" },  // Kasih jeda sedikit biar rotasi selesai sempurna
-    ];
-
-    timelineClock = 0;
-    nextIndex = 0;
-
-    playAction(animationTimeline[0].action);
-}
-
-function loadAnim(name, file) {
-    loader.load(file, (animFBX) => {
-        let clip = animFBX.animations[0];
-        const action = mixer.clipAction(clip);
-        actions[name] = action;
-    });
-}
     
 const movement = {
         forward: false,
@@ -227,6 +256,21 @@ const moveSpeed = 0.2;      // camera move speed
             case "KeyD": movement.right = false; break;
         }
     });
+
+function loadAnim(name, file) {
+    const animLoader = new FBXLoader();
+    animLoader.setPath("Jinhsi/");
+    animLoader.load(file, (anim) => {
+        const action = mixer.clipAction(anim.animations[0]);
+        actions[name] = action;
+        
+        // Turn animations usually only play once
+        if (name === "turnLeft") {
+            action.setLoop(THREE.LoopOnce);
+            action.clampWhenFinished = true; // Stay at the end frame
+        }
+    });
+}
 
 // Function to apply movement every frame
 function updateCameraMovement() {
@@ -302,23 +346,57 @@ function updateCharacterMove(delta) {
 
 function animate() {
     const delta = clock.getDelta();
-    
-    if (mixer) {
-        mixer.update(delta);
+    if (mixer) mixer.update(delta);
+    updateCameraMovement();
 
-        timelineClock += delta;
-        if (nextIndex < animationTimeline.length &&
-            timelineClock >= animationTimeline[nextIndex].time) {
+    if (characterModel) {
+        const moveStep = walkSpeed * delta;
 
-            playAction(animationTimeline[nextIndex].action);
-            nextIndex++;
+        // PHASE 1: INITIAL WALK (Z-AXIS)
+        if (currentPhase === "walk1") {
+            characterModel.position.z -= moveStep;
+            walkDistance += moveStep;
+
+            if (walkDistance >= phase1Target) {
+                currentPhase = "turning";
+                if (actions["turnLeft"]) {
+                    const prevAction = currentAction;
+                    currentAction = actions["turnLeft"];
+                    prevAction.fadeOut(0.5);
+                    currentAction.reset().fadeIn(0.5).play();
+
+                    // When turn ends, start Walk 2
+                    mixer.addEventListener('finished', function onTurnEnd(e) {
+                        if (e.action === actions["turnLeft"]) {
+                            characterModel.rotation.y += Math.PI / 2; // Physical turn
+                            walkDistance = 0; // Reset distance for second walk
+                            currentPhase = "walk2";
+                            
+                            // Switch back to walk animation
+                            currentAction.fadeOut(0.5);
+                            currentAction = actions["walk"];
+                            currentAction.reset().fadeIn(0.5).play();
+                            
+                            mixer.removeEventListener('finished', onTurnEnd); //Can add another animation if needed
+                        }
+                    });
+                }
+            }
+        }
+
+        // PHASE 2: SECOND WALK (X-AXIS)
+        // Note: After a 90-deg left turn from -Z, the character moves toward -X
+        else if (currentPhase === "walk2") {
+            characterModel.position.x -= moveStep; 
+            walkDistance += moveStep;
+
+            if (walkDistance >= phase2Target) {
+                currentPhase = "idle";
+                currentAction.fadeOut(0.5); // Stop walking animation
+                // if you have an idle animation, play it here
+            }
         }
     }
-
-    // Update logika pergerakan karakter
-    updateCharacterMove(delta);
-
-    updateCameraMovement();
 
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
