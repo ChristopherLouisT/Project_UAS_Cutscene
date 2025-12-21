@@ -3,6 +3,9 @@ import * as THREE from "three"
 //orbit control
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { Sky } from 'three/addons/objects/Sky.js';
+
 
 /* ================ */
 
@@ -15,10 +18,11 @@ renderer.shadowMap.enabled = true;
 
 //setup scene
 const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xcccccc, 100, 900);
 
 //setup camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 0, 50);
+camera.position.set(50, 0, 0);
 camera.lookAt(0, 0, 0);
 
 //setup orbit control
@@ -32,51 +36,100 @@ var intensity = 0.3;
 var light = new THREE.AmbientLight(color, intensity);
 scene.add(light);
 
-
-const sunLight = new THREE.DirectionalLight(0xffe9c0, 2.5);
-sunLight.position.set(150, 140, 80);
-sunLight.target.position.set(-90,-80,-15)
-sunLight.castShadow = true;
-sunLight.shadow.camera.near = 1;
-sunLight.shadow.camera.far = 1000;
-sunLight.shadow.camera.left = -300;
-sunLight.shadow.camera.right = 300;
-sunLight.shadow.camera.top = 300;
-sunLight.shadow.camera.bottom = -300;
-sunLight.shadow.bias = -0.09; //Buat shadownya ga terlalu kuat
-scene.add(new THREE.CameraHelper(sunLight.shadow.camera)) 
-scene.add(sunLight);
-scene.add(sunLight.target)
-var sunLightHelper = new THREE.DirectionalLightHelper(sunLight)
-scene.add(sunLightHelper)
-
-// Debug Shadow tool
-// const floor = new THREE.Mesh(
-//   new THREE.PlaneGeometry(500, 500),
-//   new THREE.MeshStandardMaterial({ color: 0x888888 })
-// );
-// floor.rotation.x = -Math.PI / 2;
-// floor.position.y = 0;
-// floor.receiveShadow = true;
-// scene.add(floor);
+// Hemisphere Light
+var skyColor = 0xFFFFFF;  // light blue
+var groundColor = 0xB97A20;  // brownish orange
+const HemisphereLight = new THREE.HemisphereLight(0xF5F5F5, 0xF5F5F5, 1.5);
+HemisphereLight.position.set(-60, -10, 0)
+scene.add(HemisphereLight);
+var hemisphereLightHelper = new THREE.HemisphereLightHelper(HemisphereLight);
+scene.add(hemisphereLightHelper);
 
 // Spot Light
-// color = 0xFF0000;
-// intensity = 30000;
-// var angle = THREE.MathUtils.degToRad(35);
-// light = new THREE.SpotLight(color, intensity, distance, angle);
-// light.position.set(-50, 10, 0);
-// light.target.position.set(10, 10, 0);
-// light.castShadow = true;
-// scene.add(new THREE.CameraHelper(light.shadow.camera)) 
-// scene.add(light);
-// scene.add(light.target);
+color = 0xFFFFFF;
+intensity = 100000;
+var distance = 500;
+var angle = THREE.MathUtils.degToRad(35);
+const spotLight = new THREE.SpotLight(0xFFFFFF, 150000, 1000, Math.PI / 3);
+spotLight.position.set(-120, 80, -120);
+spotLight.target.position.set(-80, 0, 0);
+spotLight.castShadow = true; 
+spotLight.shadow.mapSize.width = 2048; // Higher res for big scenes
+spotLight.shadow.mapSize.height = 2048;
+spotLight.shadow.camera.near = 10; 
+spotLight.shadow.camera.far = 1000;
+spotLight.shadow.bias = -0.0001;
+scene.add(new THREE.CameraHelper(spotLight.shadow.camera)) 
+scene.add(spotLight);
+scene.add(spotLight.target);
 
-// var spotLightHelper = new THREE.SpotLightHelper(light);
-// scene.add(spotLightHelper);
+var spotLightHelper = new THREE.SpotLightHelper(spotLight);
+scene.add(spotLightHelper);
+
+const sky = new Sky();
+sky.scale.setScalar(450000);
+scene.add(sky);
+
+const sun = new THREE.Vector3();
+const effectController = {
+    turbidity: 10,
+    rayleigh: 2,
+    mieCoefficient: 0.005,
+    mieDirectionalG: 0.7,
+    elevation: 2, // Low elevation for a "Golden Hour" look
+    azimuth: 180,
+};
+
+const skyUniforms = sky.material.uniforms;
+skyUniforms['turbidity'].value = effectController.turbidity;
+skyUniforms['rayleigh'].value = effectController.rayleigh;
+skyUniforms['mieCoefficient'].value = effectController.mieCoefficient;
+skyUniforms['mieDirectionalG'].value = effectController.mieDirectionalG;
+
+const phi = THREE.MathUtils.degToRad(90 - effectController.elevation);
+const theta = THREE.MathUtils.degToRad(effectController.azimuth);
+sun.setFromSphericalCoords(1, phi, theta);
+skyUniforms['sunPosition'].value.copy(sun);
 
 let mixer; // to control animations
 const clock = new THREE.Clock();
+
+const market_loader = new GLTFLoader().setPath( 'Market/' );
+    market_loader.load( 'scene.gltf', function ( gltf ) {
+
+        const market = gltf.scene
+
+        market.traverse((node) => {
+            if (node.isMesh) {
+                const oldMat = node.material;
+                
+                // Replace MeshBasicMaterial with light-reactive material
+                if (oldMat && oldMat.type === 'MeshBasicMaterial') {
+                    const newMat = new THREE.MeshStandardMaterial({
+                        map: oldMat.map || null,
+                        normalMap: oldMat.normalMap || null,
+                        roughness: 0.8,
+                        metalness: 0.1,
+                        emissiveMap: oldMat.emissiveMap || null,
+                        emissive: oldMat.emissive || new THREE.Color(0x000000),
+                    });
+                    newMat.needsUpdate = true;
+                    node.material = newMat;
+                }
+
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+
+            if (node.isLight) node.parent.remove(node);
+        });
+
+        scene.add( market );
+        market.scale.set(5,5,3); //X Y Z
+        market.position.set(-130,-9,-65)
+        animate();
+
+    });
 
 
 // ASSET: CITY (SCENE 4 + FINAL)
@@ -116,84 +169,187 @@ const city_loader = new GLTFLoader().setPath( 'City/' );
 
     });
 
-const urotsuki_loader = new GLTFLoader().setPath( 'asset2/' );
-    urotsuki_loader.load( 'scene.gltf', function ( gltf ) {
+let actions = {}, currentAction;
+let characterModel;
+let isWalkingForward;
+let currentPhase = "walk1"; // Phases: walk1, turning, walk2, idle
+let walkDistance = 0;
+const phase1Target = 110;
+const phase2Target = 30;
+const walkSpeed = 5;
 
-        const model = gltf.scene;
+const loader = new FBXLoader();
+loader.setPath("Jinhsi/");
+loader.load("Walking.fbx", (fbx) => {
+    fbx.scale.setScalar(0.02);
+    fbx.position.set(-20,-10,0);
+    fbx.rotation.y = Math.PI  + (Math.PI / 2);
 
-        model.traverse((node) => {
-            if (node.isMesh || node.isSkinnedMesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
+    scene.add(fbx);
 
-                // Convert MeshBasicMaterial to a shadow-supporting one
-                if (node.material && node.material.type === 'MeshBasicMaterial') {
-                const oldMat = node.material;
-                node.material = new THREE.MeshStandardMaterial({
-                    map: oldMat.map || null,
-                    skinning: !!node.isSkinnedMesh,
-                    roughness: 0.6,
-                    metalness: 0.1,
-                });
-                node.material.needsUpdate = true;
-                }
+    fbx.traverse(obj => {
+
+        if (obj.isMesh || obj.isSkinnedMesh) {
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+
+            // Ensure material supports lighting
+            if (obj.material) {
+                obj.material.needsUpdate = true;
             }
-        });
-
-        scene.add( model );
-        model.scale.set(10,10,10); //X Y Z
-        model.position.set(30,10,10) //X Y Z
-        model.rotation.y = Math.PI  + (Math.PI / 2);
-
-        // --- Animation setup ---
-        mixer = new THREE.AnimationMixer(model);
-
-        // Play the first animation, or find one by name
-        const clips = gltf.animations;
-
-        // Find the one named "sit" (case-insensitive)
-        const sitClip = THREE.AnimationClip.findByName(clips, 'Walking');
-
-        if (sitClip) {
-            const action = mixer.clipAction(sitClip);
-            action.play(); // start playing the animation
-        } else {
-            console.warn('Sit animation not found — available clips:', clips.map(c => c.name));
         }
 
-        animate();
+        if (obj.material) {
+            obj.material.shadowSide = THREE.DoubleSide; // Helps with thin meshes
+        }
 
-    } );
+        if (obj.isLight) {
+            obj.intensity = 0;
+        }
+    });
 
-// let mesh = new THREE.Mesh(geometry, material);
-// mesh.rotation.x = -Math.PI / 2;
-// mesh.receiveShadow = true;
-// scene.add(mesh);
+    mixer = new THREE.AnimationMixer(fbx);
+    characterModel = fbx;
 
+    if (fbx.animations.length > 0) {
+        const walkAction = mixer.clipAction(fbx.animations[0]);
+        actions["walk"] = walkAction;
+        currentAction = walkAction; // Set this so the 'turn' logic can fade it out
+        walkAction.play();         // Start the bones moving!
+    }
+    // ----------------------------------------
 
-// let radius = 7;
-// let widthSegments = 12;
-// let heightSegments = 8;
-// geometry = new THREE.SphereGeometry(radius, widthSegments, heightSegments);
-// material = new THREE.MeshPhongMaterial({ color: '#FA8' });
-// mesh = new THREE.Mesh(geometry, material);
-// mesh.position.set(-radius - 1, radius + 2, 0);
-// mesh.castShadow = true;
-// scene.add(mesh);
-
-
-// size = 4;
-// geometry = new THREE.BoxGeometry(size, size, size);
-// material = new THREE.MeshPhongMaterial({ color: '#8AC', transparent: true, opacity: 0.5 });
-// mesh = new THREE.Mesh(geometry, material);
-// mesh.position.set(size + 1, size / 2, 0);
-// mesh.castShadow = true;
-// scene.add(mesh);
+    isWalkingForward = true;
+    loadAnim("turnRight", "Right Turn.fbx");
+    loadAnim("walk", "Walking.fbx");
+});
 
 function animate() {
     const delta = clock.getDelta();
     if (mixer) mixer.update(delta);
+
+    if (characterModel) {
+        const moveStep = walkSpeed * delta;
+
+        // PHASE 1: INITIAL WALK (Z-AXIS)
+        if (currentPhase === "walk1") {
+            characterModel.position.x -= moveStep;
+            walkDistance += moveStep;
+
+            if (walkDistance >= phase1Target) {
+                currentPhase = "turning";
+                if (actions["turnRight"]) {
+                    const prevAction = currentAction;
+                    currentAction = actions["turnRight"];
+                    prevAction.fadeOut(0.5);
+                    currentAction.reset().fadeIn(0.5).play();
+
+                    // When turn ends, start Walk 2
+                    mixer.addEventListener('finished', function onTurnEnd(e) {
+                        if (e.action === actions["turnRight"]) {
+                            characterModel.rotation.y -= Math.PI / 2; // Physical turn
+                            walkDistance = 0; // Reset distance for second walk
+                            currentPhase = "walk2";
+                            
+                            // Switch back to walk animation
+                            currentAction.fadeOut(0.5);
+                            currentAction = actions["walk"];
+                            currentAction.reset().fadeIn(0.5).play();
+                            
+                            mixer.removeEventListener('finished', onTurnEnd); //Can add another animation if needed
+                        }
+                    });
+                }
+            }
+        }
+
+        // PHASE 2: SECOND WALK (X-AXIS)
+        // Note: After a 90-deg left turn from -Z, the character moves toward -X
+        else if (currentPhase === "walk2") {
+            characterModel.position.z -= moveStep; 
+            walkDistance += moveStep;
+
+            if (walkDistance >= phase2Target) {
+                currentPhase = "idle";
+                currentAction.fadeOut(0.5); // Stop walking animation
+                // if you have an idle animation, play it here
+            }
+        }
+    }
+
+    updateCameraMovement();
+    
     renderer.render(scene, camera)
     requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
+
+function loadAnim(name, file) {
+    const animLoader = new FBXLoader();
+    animLoader.setPath("Jinhsi/");
+    animLoader.load(file, (anim) => {
+        const action = mixer.clipAction(anim.animations[0]);
+        actions[name] = action;
+        
+        // Turn animations usually only play once
+        if (name.toLowerCase().includes("turn")) {
+            action.setLoop(THREE.LoopOnce);
+            action.clampWhenFinished = true;
+        }
+    });
+}
+
+const movement = {
+        forward: false,
+        backward: false,
+        left: false,
+        right: false,
+    };
+const moveSpeed = 0.8;      // camera move speed
+
+    window.addEventListener("keydown", (e) => {
+        switch (e.code) {
+            case "KeyW": movement.forward = true; break;
+            case "KeyS": movement.backward = true; break;
+            case "KeyA": movement.left = true; break;
+            case "KeyD": movement.right = true; break;
+        }
+    });
+
+    window.addEventListener("keyup", (e) => {
+        switch (e.code) {
+            case "KeyW": movement.forward = false; break;
+            case "KeyS": movement.backward = false; break;
+            case "KeyA": movement.left = false; break;
+            case "KeyD": movement.right = false; break;
+        }
+    });
+
+function updateCameraMovement() {
+    const direction = new THREE.Vector3();
+
+    // WASD movement (world-relative)
+    if (movement.forward) {
+        camera.getWorldDirection(direction);
+        camera.position.addScaledVector(direction, moveSpeed);
+    }
+    if (movement.backward) {
+        camera.getWorldDirection(direction);
+        camera.position.addScaledVector(direction, -moveSpeed);
+    }
+    if (movement.left) {
+        camera.getWorldDirection(direction);
+        direction.cross(camera.up).normalize();
+        camera.position.addScaledVector(direction, -moveSpeed);
+    }
+    if (movement.right) {
+        camera.getWorldDirection(direction);
+        direction.cross(camera.up).normalize();
+        camera.position.addScaledVector(direction, moveSpeed);
+    }
+
+    const front = new THREE.Vector3();
+    camera.getWorldDirection(front);
+    controls.target.copy(camera.position).add(front.multiplyScalar(10));
+    controls.update();
+}
