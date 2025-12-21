@@ -79,6 +79,19 @@ scene.add(sunLightHelper)
 let mixer; // to control animations
 const clock = new THREE.Clock();
 
+let character = null; 
+const charSpeed = 12; 
+let waypointIndex = 0;
+
+const waypoints = [
+    new THREE.Vector3(10, 0, 20), // 1. Kanan
+    new THREE.Vector3(10, 0, -120),  // 2. Maju
+    new THREE.Vector3(-150, -9, 135)   // 3. Kanan
+];
+
+const dummyTarget = new THREE.Object3D(); 
+
+
 const classroom_loader = new GLTFLoader().setPath( 'Market/' );
     classroom_loader.load( 'scene.gltf', function ( gltf ) {
 
@@ -128,8 +141,6 @@ loader.load("Walking.fbx", (fbx) => {
     fbx.position.set(0,0,20);
     fbx.rotation.y = Math.PI  + (Math.PI / 24);
 
-    
-
     scene.add(fbx);
 
     fbx.traverse(obj => {
@@ -140,17 +151,55 @@ loader.load("Walking.fbx", (fbx) => {
 
     mixer = new THREE.AnimationMixer(fbx);
 
+    character = fbx; 
+
     const sit = mixer.clipAction(fbx.animations[0]);
     actions["sit"] = sit;
     currentAction = sit;
     sit.play();
 
     // Load animations after model is ready
-    loadAnim("standup", "Sit to Stand.fbx");
     loadAnim("walk", "Walking.fbx");
 
     setupTimeline();
 });
+
+function playAction(name, fade = 0.5) { // Fade agak diperlambat biar smooth
+    const nextAction = actions[name];
+    if (!nextAction) {
+        console.warn(`Animation "${name}" not loaded yet`);
+        return;
+    }
+
+    if (currentAction !== nextAction) {
+        if (currentAction) {
+            currentAction.fadeOut(fade);
+        }
+        nextAction.reset().fadeIn(fade).play();
+        currentAction = nextAction;
+    }
+}
+
+function setupTimeline() {
+    animationTimeline = [
+        { time: 0, action: "sit" },
+        { time: 3, action: "standup" }, // Durasi standup biasanya 2-3 detik
+        { time: 5, action: "walk" },  // Kasih jeda sedikit biar rotasi selesai sempurna
+    ];
+
+    timelineClock = 0;
+    nextIndex = 0;
+
+    playAction(animationTimeline[0].action);
+}
+
+function loadAnim(name, file) {
+    loader.load(file, (animFBX) => {
+        let clip = animFBX.animations[0];
+        const action = mixer.clipAction(clip);
+        actions[name] = action;
+    });
+}
     
 const movement = {
         forward: false,
@@ -159,7 +208,7 @@ const movement = {
         right: false,
     };
 
-const moveSpeed = 1;      // camera move speed
+const moveSpeed = 0.2;      // camera move speed
 
     window.addEventListener("keydown", (e) => {
         switch (e.code) {
@@ -209,9 +258,65 @@ function updateCameraMovement() {
     controls.update();
 }
 
+function updateCharacterMove(delta) {
+    if (!character) return;
+
+    // 1. LOGIKA SAAT STAND UP (Putar badan ke arah tujuan pertama)
+    //    Ini membuat karakter berputar ditempat saat berdiri agar siap berjalan
+    if (actions["standup"] && currentAction === actions["standup"]) {
+        const target = waypoints[0];
+        
+        // Gunakan dummy object untuk mencontek rotasi yang seharusnya
+        dummyTarget.position.copy(character.position);
+        dummyTarget.lookAt(target); 
+        
+        // Putar karakter secara halus (Slerp) menuju rotasi dummy
+        // Angka 3.0 adalah kecepatan putar (semakin besar semakin cepat)
+        character.quaternion.slerp(dummyTarget.quaternion, 3.0 * delta);
+    }
+
+    // 2. LOGIKA SAAT WALK (Jalan + Putar mengikuti jalur)
+    if (actions["walk"] && currentAction === actions["walk"]) {
+        if (waypointIndex < waypoints.length) {
+            const target = waypoints[waypointIndex];
+            const distance = character.position.distanceTo(target);
+
+            // Jika jarak sudah dekat (< 0.5), pindah ke tujuan berikutnya
+            if (distance < 0.5) {
+                waypointIndex++;
+            } else {
+                // Hitung arah
+                const direction = new THREE.Vector3().subVectors(target, character.position).normalize();
+                
+                // Pindahkan posisi
+                character.position.add(direction.multiplyScalar(charSpeed * delta));
+                
+                // Rotasi badan menghadap tujuan (Smooth turn saat jalan)
+                dummyTarget.position.copy(character.position);
+                dummyTarget.lookAt(target);
+                character.quaternion.slerp(dummyTarget.quaternion, 10.0 * delta); // Rotasi cepat saat jalan
+            }
+        } 
+    }
+}
+
 function animate() {
     const delta = clock.getDelta();
-    if (mixer) mixer.update(delta);
+    
+    if (mixer) {
+        mixer.update(delta);
+
+        timelineClock += delta;
+        if (nextIndex < animationTimeline.length &&
+            timelineClock >= animationTimeline[nextIndex].time) {
+
+            playAction(animationTimeline[nextIndex].action);
+            nextIndex++;
+        }
+    }
+
+    // Update logika pergerakan karakter
+    updateCharacterMove(delta);
 
     updateCameraMovement();
 

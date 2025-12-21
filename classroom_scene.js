@@ -58,6 +58,7 @@ scene.add(sunLightHelper)
 let mixer; // to control animations
 const clock = new THREE.Clock();
 
+
 const classroom_loader = new GLTFLoader().setPath('Classroom/');
 classroom_loader.load('scene.gltf', function (gltf) {
 
@@ -115,9 +116,9 @@ const waypoints = [
     new THREE.Vector3(-150, -9, 135)   // 3. Kanan
 ];
 
-const stats = new Stats();
-stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
-document.body.appendChild(stats.dom);
+// const stats = new Stats();
+// stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+// document.body.appendChild(stats.dom);
 
 // Helper object untuk menghitung rotasi tanpa mengganggu mesh asli
 const dummyTarget = new THREE.Object3D(); 
@@ -132,15 +133,11 @@ loader.load("Sitting.fbx", (fbx) => {
 
     //Removing light from character
     fbx.traverse(obj => {
-        if (obj.isLight) obj.parent.remove(obj);
-
-        if (obj.isMesh && obj.material) {
-            obj.material.emissive = new THREE.Color(0x000000);
-            obj.material.emissiveIntensity = 0;
-            obj.castShadow = true;
-            obj.receiveShadow = true;
+        if (obj.isLight) {
+            obj.intensity = 0;
         }
     });
+
 
 
     scene.add(fbx);
@@ -275,34 +272,109 @@ window.addEventListener("keyup", (e) => {
 function updateCameraMovement() {
     const direction = new THREE.Vector3();
 
-    // WASD movement (world-relative)
     if (movement.forward) {
         camera.getWorldDirection(direction);
         camera.position.addScaledVector(direction, moveSpeed);
+        followEnabled = false; // disable follow jika user gerak manual
     }
     if (movement.backward) {
         camera.getWorldDirection(direction);
         camera.position.addScaledVector(direction, -moveSpeed);
+        followEnabled = false;
     }
     if (movement.left) {
         camera.getWorldDirection(direction);
         direction.cross(camera.up).normalize();
         camera.position.addScaledVector(direction, -moveSpeed);
+        followEnabled = false;
     }
     if (movement.right) {
         camera.getWorldDirection(direction);
         direction.cross(camera.up).normalize();
         camera.position.addScaledVector(direction, moveSpeed);
+        followEnabled = false;
     }
 
+    // Update orbit controls target
     const front = new THREE.Vector3();
     camera.getWorldDirection(front);
     controls.target.copy(camera.position).add(front.multiplyScalar(10));
     controls.update();
 }
 
+
+// =======================
+// CAMERA FOLLOW SYSTEM
+// =======================
+
+let followEnabled = true;    // kamera mengikuti karakter
+let followHeight = 20;       // ketinggian kamera relatif
+let followDistance = -40;     // jarak kamera di belakang karakter
+let followSmooth = 0.1;      // smooth lerp
+
+function updateCameraFollow() {
+    if (!character || !followEnabled) return;
+
+    // posisi karakter
+    const charPos = character.position.clone();
+
+    // arah depan karakter
+    const forward = new THREE.Vector3(0, 0, 1);
+    forward.applyQuaternion(character.quaternion);
+    forward.normalize();
+
+    // posisi ideal kamera
+    const idealPos = charPos.clone()
+        .add(forward.clone().multiplyScalar(-followDistance))
+        .add(new THREE.Vector3(0, followHeight, 0));
+
+    // Lerp biar halus
+    camera.position.lerp(idealPos, followSmooth);
+
+    // Kamera menghadap karakter
+    const lookPos = charPos.clone().add(new THREE.Vector3(0, 10, 0));
+    camera.lookAt(lookPos);
+}
+
+// =======================
+// CINEMATIC ORBIT-FOLLOW
+// =======================
+
+let orbitEnabled = true;       // kamera mengikuti karakter
+let orbitDistance = 45;        // jarak kamera dari karakter
+let orbitHeight = 18;          // ketinggian kamera
+let orbitAngle = Math.PI * 1.1 // posisi orbit awal
+let orbitSpeed = 0.6;          // kecepatan rotasi orbit
+let orbitSmooth = 0.1;         // smoothness
+
+function updateOrbitFollow(delta) {
+    if (!character || !orbitEnabled) return;
+
+    // Tambahkan rotasi orbit otomatis
+    orbitAngle += orbitSpeed * delta;
+
+    // Posisi karakter
+    const charPos = character.position.clone();
+
+    // Hitung posisi kamera ideal di orbit
+    const idealX = charPos.x + Math.cos(orbitAngle) * orbitDistance;
+    const idealZ = charPos.z + Math.sin(orbitAngle) * orbitDistance;
+    const idealY = charPos.y + orbitHeight;
+
+    const idealPos = new THREE.Vector3(idealX, idealY, idealZ);
+
+    // LERP agar gerakan kamera halus
+    camera.position.lerp(idealPos, orbitSmooth);
+
+    // Kamera selalu menghadap karakter
+    const lookAtPos = charPos.clone().add(new THREE.Vector3(0, 10, 0));
+    camera.lookAt(lookAtPos);
+}
+
+
+
 function animate() {
-    stats.begin();
+    // stats.begin();
     const delta = clock.getDelta();
     
     if (mixer) {
@@ -323,8 +395,13 @@ function animate() {
     // Update kamera user
     updateCameraMovement();
 
+    // Camera follow character
+    // updateCameraFollow();
+
+    updateOrbitFollow(delta);
+
     renderer.render(scene, camera)
-    stats.end();
+    // stats.end();
     requestAnimationFrame(animate);
 }
 
