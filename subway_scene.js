@@ -1,10 +1,9 @@
 import * as THREE from "three"
-import Stats from "./node_modules/stats.js/src/Stats.js"
-
 //orbit control
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { Sky } from 'three/addons/objects/Sky.js';
 
 /* ================ */
 
@@ -14,9 +13,11 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 renderer.shadowMap.enabled = true;
+// renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 //setup scene
 const scene = new THREE.Scene();
+// scene.fog = new THREE.Fog(0xcccccc, 100, 900);
 
 //setup camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -34,61 +35,142 @@ var intensity = 0.3;
 var light = new THREE.AmbientLight(color, intensity);
 scene.add(light);
 
+// Hemisphere Light
+const HemisphereLight = new THREE.HemisphereLight(0xFFFFFF, 0xFFFFFF, 1);
+HemisphereLight.position.set(10, 11, 15)
+scene.add(HemisphereLight);
+var hemisphereLightHelper = new THREE.HemisphereLightHelper(HemisphereLight);
+scene.add(hemisphereLightHelper);
+
+const sky = new Sky();
+sky.scale.setScalar(450000);
+scene.add(sky);
+
+const sun = new THREE.Vector3();
+const effectController = {
+    turbidity: 10,
+    rayleigh: 2,
+    mieCoefficient: 0.005,
+    mieDirectionalG: 0.7,
+    elevation: 2, // Low elevation for a "Golden Hour" look
+    azimuth: 180,
+};
+
+const skyUniforms = sky.material.uniforms;
+skyUniforms['turbidity'].value = effectController.turbidity;
+skyUniforms['rayleigh'].value = effectController.rayleigh;
+skyUniforms['mieCoefficient'].value = effectController.mieCoefficient;
+skyUniforms['mieDirectionalG'].value = effectController.mieDirectionalG;
+
+const phi = THREE.MathUtils.degToRad(90 - effectController.elevation);
+const theta = THREE.MathUtils.degToRad(effectController.azimuth);
+sun.setFromSphericalCoords(1, phi, theta);
+skyUniforms['sunPosition'].value.copy(sun);
+
 
 const sunLight = new THREE.DirectionalLight(0xffe9c0, 2.5);
-sunLight.position.set(150, 140, 80);
-sunLight.target.position.set(-90,-80,-15)
+sunLight.position.set(-90, 100, -50);
+sunLight.target.position.set(30, -5, 50)
 sunLight.castShadow = true;
-sunLight.shadow.camera.near = 1;
-sunLight.shadow.camera.far = 1000;
-sunLight.shadow.camera.left = -300;
-sunLight.shadow.camera.right = 300;
-sunLight.shadow.camera.top = 300;
-sunLight.shadow.camera.bottom = -300;
-sunLight.shadow.bias = -0.09; //Buat shadownya ga terlalu kuat
+sunLight.shadow.camera.near = 0.5;    
+sunLight.shadow.camera.far = 500;    // Increased to reach the ground from 140 up
+sunLight.shadow.camera.left = -50;    
+sunLight.shadow.camera.right = 50;
+sunLight.shadow.camera.top = 50;
+sunLight.shadow.camera.bottom = -50;
+sunLight.shadow.mapSize.width = 2048;  // Increased from default (Higher = Sharper)
+sunLight.shadow.mapSize.height = 2048;
+sunLight.shadow.bias = -0.0001;
 scene.add(new THREE.CameraHelper(sunLight.shadow.camera)) 
 scene.add(sunLight);
 scene.add(sunLight.target)
 var sunLightHelper = new THREE.DirectionalLightHelper(sunLight)
 scene.add(sunLightHelper)
 
-// Debug Shadow tool
-// const floor = new THREE.Mesh(
-//   new THREE.PlaneGeometry(500, 500),
-//   new THREE.MeshStandardMaterial({ color: 0x888888 })
-// );
-// floor.rotation.x = -Math.PI / 2;
-// floor.position.y = 0;
-// floor.receiveShadow = true;
-// scene.add(floor);
-
-// Spot Light
-// color = 0xFF0000;
-// intensity = 30000;
-// var angle = THREE.MathUtils.degToRad(35);
-// light = new THREE.SpotLight(color, intensity, distance, angle);
-// light.position.set(-50, 10, 0);
-// light.target.position.set(10, 10, 0);
-// light.castShadow = true;
-// scene.add(new THREE.CameraHelper(light.shadow.camera)) 
-// scene.add(light);
-// scene.add(light.target);
-
-// var spotLightHelper = new THREE.SpotLightHelper(light);
-// scene.add(spotLightHelper);
 
 let mixer; // to control animations
 const clock = new THREE.Clock();
 
-const subway_loader = new GLTFLoader().setPath( 'Subway/' );
-    subway_loader.load( 'scene.gltf', function ( gltf ) {
 
-        const subway = gltf.scene
 
-        subway.traverse((node) => {
+let actions = {};
+let currentAction;
+const loader = new FBXLoader();
+loader.setPath("Jinhsi/");
+loader.load("Walking.fbx", (fbx) => {
+  fbx.scale.setScalar(0.004);
+  fbx.position.set(11.5,11.2,-15)
+  fbx.rotation.y = Math.PI  - (Math.PI / 2);
+  scene.add(fbx);
+
+  fbx.traverse(obj => {
+
+        if (obj.isMesh || obj.isSkinnedMesh) {
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+
+            // Ensure material supports lighting
+            if (obj.material) {
+                obj.material.needsUpdate = true;
+            }
+        }
+
+        if (obj.material) {
+            obj.material.shadowSide = THREE.DoubleSide; // Helps with thin meshes
+        }
+
+        if (obj.isLight) {
+            obj.intensity = 0;
+        }
+    });
+
+  mixer = new THREE.AnimationMixer(fbx);
+  const action = mixer.clipAction(fbx.animations[0]);
+  action.play();
+});
+
+const loaderStation = new FBXLoader();
+loaderStation.setPath("TrainStation/");
+loaderStation.load("source/Train Station.fbx", (fbx) => {
+
+    fbx.scale.setScalar(0.01);
+    fbx.position.set(10,5,20)
+    scene.add(fbx);
+
+    fbx.traverse(obj => {
+        console.log(obj)
+
+        if (obj.isMesh || obj.isSkinnedMesh || obj.isGroup) {
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+
+            // Ensure material supports lighting
+            if (obj.material) {
+                obj.material.needsUpdate = true;
+            }
+        }
+
+        if (obj.material) {
+            obj.material.shadowSide = THREE.DoubleSide; // Helps with thin meshes
+        }
+
+        if (obj.isLight) {
+            obj.intensity = 0;
+        }
+    });
+
+});
+
+let trainMixer;
+const train_loader = new GLTFLoader().setPath('Train/');
+    train_loader.load('Body/scene.gltf', function (gltf) {
+
+        const trainBody = gltf.scene
+
+        trainBody.traverse((node) => {
             if (node.isMesh) {
                 const oldMat = node.material;
-                
+
                 // Replace MeshBasicMaterial with light-reactive material
                 if (oldMat && oldMat.type === 'MeshBasicMaterial') {
                     const newMat = new THREE.MeshStandardMaterial({
@@ -110,24 +192,57 @@ const subway_loader = new GLTFLoader().setPath( 'Subway/' );
             if (node.isLight) node.parent.remove(node);
         });
 
-        scene.add( subway );
-        subway.scale.set(10,10,10); //X Y Z
+        scene.add(trainBody);
+        trainBody.scale.set(0.7, 1, 0.7); //X Y Z
+        trainBody.position.set(6.6,9.5,-15.5);
+
+        if (gltf.animations && gltf.animations.length) {
+            trainMixer = new THREE.AnimationMixer(trainBody);
+            
+            // Play all animations found in the file
+            gltf.animations.forEach((clip) => {
+                trainMixer.clipAction(clip).play();
+            });
+        }
         animate();
 
     });
 
-let actions = {};
-let currentAction;
-const loader = new FBXLoader();
-loader.setPath("Jinhsi/");
-loader.load("Jinhsi.fbx", (fbx) => {
-  fbx.scale.setScalar(0.01);
-  fbx.position.set(10,5,20)
-  scene.add(fbx);
-  mixer = new THREE.AnimationMixer(fbx);
-  const action = mixer.clipAction(fbx.animations[0]);
-  action.play();
-});
+    train_loader.load('Head/scene.gltf', function (gltf) {
+
+        const trainHead = gltf.scene
+
+        trainHead.traverse((node) => {
+            if (node.isMesh) {
+                const oldMat = node.material;
+
+                // Replace MeshBasicMaterial with light-reactive material
+                if (oldMat && oldMat.type === 'MeshBasicMaterial') {
+                    const newMat = new THREE.MeshStandardMaterial({
+                        map: oldMat.map || null,
+                        normalMap: oldMat.normalMap || null,
+                        roughness: 0.8,
+                        metalness: 0.1,
+                        emissiveMap: oldMat.emissiveMap || null,
+                        emissive: oldMat.emissive || new THREE.Color(0x000000),
+                    });
+                    newMat.needsUpdate = true;
+                    node.material = newMat;
+                }
+
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+
+            if (node.isLight) node.parent.remove(node);
+        });
+
+        scene.add(trainHead);
+        trainHead.scale.set(0.7, 1, 0.7); //X Y Z
+        trainHead.position.set(6.6,9,-4.5);
+        animate();
+
+    });
 
 // =======================
 // CAMERA MOVEMENT SYSTEM
@@ -147,7 +262,7 @@ const rotation = {
     down: false,
 };
 
-const moveSpeed = 1;      // camera move speed
+const moveSpeed = 0.8;      // camera move speed
 
 window.addEventListener("keydown", (e) => {
     switch (e.code) {
@@ -198,9 +313,9 @@ function updateCameraMovement() {
 }
 
 function animate() {
-    stats.begin()
     const delta = clock.getDelta();
     if (mixer) mixer.update(delta);
+    if (trainMixer) trainMixer.update(delta);
 
     updateCameraMovement();
 
