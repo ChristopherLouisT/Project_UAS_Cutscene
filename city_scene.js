@@ -270,7 +270,7 @@ const city_loader = new GLTFLoader().setPath( 'City/' );
 let actions = {}, currentAction;
 let characterModel;
 let isWalkingForward;
-let currentPhase = "walk1"; // Phases: walk1, turning, walk2, idle
+let currentPhase = "walk1"; // Phases: walk1, turning, walk2, idle/sitting
 let walkDistance = 0;
 const phase1Target = 110;
 const phase2Target = 30;
@@ -331,7 +331,7 @@ loader.load("Walking.fbx", (fbx) => {
     isWalkingForward = true;
     loadAnim("turnRight", "Right Turn.fbx");
     loadAnim("walk", "Walking.fbx");
-    loadAnim("sit", "Sitting.fbx");
+    loadAnim("idle", "Idle.fbx");
 });
 
 let startTime = 0;
@@ -341,7 +341,7 @@ const timeline = {
     walk1: 18,   // detik
     turn: 1.2,
     walk2: 6,
-    sit: 4,
+    idle: 4,
     walk3: 6
 
 };
@@ -521,8 +521,8 @@ const cameraTimeline = [
     {
         duration: 4.0,
         start: () => {
-            camera.position.set(-140, 4, -40);
-            staticLookTarget.set(-130, 2, -40);
+            camera.position.set(-110, 0, -48);
+            staticLookTarget.set(-135, -2, -48);
             camera.lookAt(staticLookTarget);
         },
         update: () => {
@@ -563,11 +563,11 @@ function endCameraCutscene() {
     controls.enabled = true;
 }
 
-function switchToSit() {
-    currentPhase = "sit";
+function switchToIdle() {
+    currentPhase = "idle";
 
     const prev = currentAction;
-    currentAction = actions["sit"];
+    currentAction = actions["idle"];
 
     prev.fadeOut(0.4);
     currentAction.reset().fadeIn(0.4).play();
@@ -575,18 +575,18 @@ function switchToSit() {
     currentAction.setLoop(THREE.LoopOnce);
     currentAction.clampWhenFinished = true;
 
-    mixer.addEventListener("finished", onSitFinished);
+    mixer.addEventListener("finished", onIdleFinished);
 }
 
-function onSitFinished(e) {
-    if (e.action === actions["sit"]) {
+function onIdleFinished(e) {
+    if (e.action === actions["idle"]) {
         currentPhase = "walk3";
 
         currentAction.fadeOut(0.3);
         currentAction = actions["walk"];
         currentAction.reset().fadeIn(0.3).play();
 
-        mixer.removeEventListener("finished", onSitFinished);
+        mixer.removeEventListener("finished", onIdleFinished);
     }
 }
 
@@ -609,7 +609,7 @@ function animate() {
             characterModel.position.x -= walkSpeed * delta;
 
             if (elapsedTime >= timeline.walk1) {
-                switchToTurn();
+                switchToTurnRight();
             }
         }
 
@@ -624,7 +624,7 @@ function animate() {
 
             if (elapsedTime >= timeline.walk1 + timeline.turn + timeline.walk2) {
                 // currentPhase = "idle";
-                switchToSit();
+                switchToIdle();
             }
         }
 
@@ -684,7 +684,7 @@ function loadAnim(name, file) {
         }
     });
 }
-function switchToTurn() {
+function switchToTurnRight() {
     currentPhase = "turning";
 
     const prev = currentAction;
