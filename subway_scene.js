@@ -14,11 +14,10 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 renderer.shadowMap.enabled = true;
-// renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 //setup scene
 const scene = new THREE.Scene();
-// scene.fog = new THREE.Fog(0xcccccc, 100, 900);
+scene.fog = new THREE.Fog(0xFFB35C, 100, 900);
 
 //setup camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -40,8 +39,6 @@ scene.add(light);
 const HemisphereLight = new THREE.HemisphereLight(0xFFFFFF, 0xFFFFFF, 1);
 HemisphereLight.position.set(10, 11, 15)
 scene.add(HemisphereLight);
-// var hemisphereLightHelper = new THREE.HemisphereLightHelper(HemisphereLight);
-// scene.add(hemisphereLightHelper);
 
 const sky = new Sky();
 sky.scale.setScalar(450000);
@@ -74,22 +71,46 @@ sunLight.position.set(-90, 100, -50);
 sunLight.target.position.set(30, -5, 50)
 sunLight.castShadow = true;
 sunLight.shadow.camera.near = 0.5;    
-sunLight.shadow.camera.far = 500;    // Increased to reach the ground from 140 up
+sunLight.shadow.camera.far = 500;
 sunLight.shadow.camera.left = -50;    
 sunLight.shadow.camera.right = 50;
 sunLight.shadow.camera.top = 50;
 sunLight.shadow.camera.bottom = -50;
-sunLight.shadow.mapSize.width = 2048;  // Increased from default (Higher = Sharper)
+sunLight.shadow.mapSize.width = 2048;
 sunLight.shadow.mapSize.height = 2048;
 sunLight.shadow.bias = -0.0001;
-scene.add(new THREE.CameraHelper(sunLight.shadow.camera)) 
+// scene.add(new THREE.CameraHelper(sunLight.shadow.camera)) 
 scene.add(sunLight);
 scene.add(sunLight.target)
-// var sunLightHelper = new THREE.DirectionalLightHelper(sunLight)
-// scene.add(sunLightHelper)
 
+// --- GROUND SETTINGS ---
+const groundSize = 2000;
+const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
+const groundMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0xFFFDD0,
+    roughness: 0.8, 
+    metalness: 0.2 
+});
 
-let mixer; // to control animations
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+
+// Rotate to make it horizontal
+ground.rotation.x = -Math.PI / 2; 
+
+ground.receiveShadow = true;
+
+ground.position.y = 10; 
+
+scene.add(ground);
+
+// OPTIONAL: Add a Grid Helper to see the floor clearly
+// const grid = new THREE.GridHelper(groundSize, 100, 0x000000, 0x000000);
+// grid.position.y = 0.21; // Slightly above ground to avoid "z-fighting" flickering
+// grid.material.opacity = 0.2;
+// grid.material.transparent = true;
+// scene.add(grid);
+
+let mixer;
 const clock = new THREE.Clock();
 
 // === CAMERA TIMELINE HELPERS ===
@@ -341,14 +362,13 @@ Promise.all(loadPromises).then(([fbxChar, fbxLeftTurn, fbxRighTurn, fbxStand , f
             obj.castShadow = true;
             obj.receiveShadow = true;
 
-            // Ensure material supports lighting
             if (obj.material) {
                 obj.material.needsUpdate = true;
             }
         }
 
         if (obj.material) {
-            obj.material.shadowSide = THREE.DoubleSide; // Helps with thin meshes
+            obj.material.shadowSide = THREE.DoubleSide;
         }
 
         if (obj.isLight) {
@@ -474,11 +494,9 @@ window.addEventListener("keyup", (e) => {
     }
 });
 
-// Function to apply movement every frame
 function updateCameraMovement() {
     const direction = new THREE.Vector3();
 
-    // WASD movement (world-relative)
     if (movement.forward) {
         camera.getWorldDirection(direction);
         camera.position.addScaledVector(direction, moveSpeed);

@@ -229,7 +229,7 @@
     let timelineClock = 0;
     let nextIndex = 0;
 
-    // --- VARIABEL BARU UNTUK PERGERAKAN ---
+    // VARIABEL BARU UNTUK PERGERAKAN 
     let character = null; 
     const charSpeed = 12; 
     let waypointIndex = 0;
@@ -241,15 +241,11 @@
         new THREE.Vector3(-150, -9, 135)   // 3. Kanan
     ];
 
-    // const stats = new Stats();
-    // stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
-    // document.body.appendChild(stats.dom);
-
     // Helper object untuk menghitung rotasi tanpa mengganggu mesh asli
     const dummyTarget = new THREE.Object3D(); 
     // --------------------------------------
 
-    // === CHARACTER COLLISION ===
+    // CHARACTER COLLISION 
     const CHAR_HEIGHT = 16;
     const CHAR_RADIUS = 4;
 
@@ -276,14 +272,13 @@
                 obj.castShadow = true;
                 obj.receiveShadow = true;
 
-                // Ensure material supports lighting
                 if (obj.material) {
                     obj.material.needsUpdate = true;
                 }
             }
 
             if (obj.material) {
-                obj.material.shadowSide = THREE.DoubleSide; // Helps with thin meshes
+                obj.material.shadowSide = THREE.DoubleSide;
             }
 
             if (obj.isLight) {
@@ -365,11 +360,11 @@
         playAction(animationTimeline[0].action);
     }
 
-    // --- FUNGSI UPDATE GERAK & ROTASI KARAKTER ---
+    // FUNGSI UPDATE GERAK & ROTASI KARAKTER
     function updateCharacterMove(delta) {
         if (!character) return;
 
-        // 1. LOGIKA SAAT STAND UP (Putar badan ke arah tujuan pertama)
+        // Stand Up Logic
         //    Ini membuat karakter berputar ditempat saat berdiri agar siap berjalan
         if (actions["standup"] && currentAction === actions["standup"]) {
             const target = waypoints[0];
@@ -379,11 +374,11 @@
             dummyTarget.lookAt(target); 
             
             // Putar karakter secara halus (Slerp) menuju rotasi dummy
-            // Angka 3.0 adalah kecepatan putar (semakin besar semakin cepat)
+            // 3.0 adalah kecepatan putar (semakin besar semakin cepat)
             character.quaternion.slerp(dummyTarget.quaternion, 3.0 * delta);
         }
 
-        // 2. LOGIKA SAAT WALK (Jalan + Putar mengikuti jalur)
+        // While Walk Logic (Jalan + Putar mengikuti jalur)
         if (actions["walk"] && currentAction === actions["walk"]) {
             if (waypointIndex < waypoints.length) {
                 const target = waypoints[waypointIndex];
@@ -591,7 +586,7 @@
         orbitProgress += delta;
         const t = THREE.MathUtils.clamp(orbitProgress / duration, 0, 1);
 
-        // EXACTLY one revolution
+        // 1 revolution
         const angle = orbitStartAngle + t * Math.PI * 2;
 
         const center = GLOBAL_LOOK_TARGET;
@@ -618,12 +613,10 @@
     function panFollowCharacter(shot, delta) {
         if (!character) return;
 
-        // Smooth camera position toward the pan rail
         camera.position.lerp(shot.position, PAN_SETTINGS.speed * delta);
 
-        // Look target follows character (real pan)
         const charLook = character.position.clone();
-        charLook.y += 15; // eye level (NOT an offset snap, just framing)
+        charLook.y += 15; // eye level 
 
         GLOBAL_LOOK_TARGET.lerp(charLook, PAN_SETTINGS.speed * delta);
         camera.lookAt(GLOBAL_LOOK_TARGET);
@@ -739,7 +732,7 @@
 
     let orbitSequenceStarted = false;
     function updateCameraTimeline(delta) {
-        // SITTING CAMERA SEQUENCE
+        // Stting Camera Sequence
         if (currentAction === actions["sit"]) {
 
             // 0 → 1s : TILT
